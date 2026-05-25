@@ -517,7 +517,7 @@ export default function MalakesRoundup() {
                 <Calendar className="w-4 h-4 text-primary" />
                 <span className="text-sm font-semibold">Submit Event</span>
               </div>
-              {!showEventForm && (
+              {!showEventForm && (loggedInUser === currentOrganiser || isAdmin) && (
                 <Button 
                   size="sm" 
                   onClick={() => setShowEventForm(true)}
@@ -528,6 +528,10 @@ export default function MalakesRoundup() {
                 </Button>
               )}
             </div>
+            
+            {!showEventForm && loggedInUser !== currentOrganiser && !isAdmin && (
+              <p className="text-xs text-muted-foreground">Only {currentOrganiser} can submit an event this week.</p>
+            )}
             
             {showEventForm ? (
               <div className="space-y-3">
