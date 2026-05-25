@@ -111,8 +111,7 @@ export default function MalakesRoundup() {
   const [currentProposal, setCurrentProposal] = useState<EventProposal | null>(null)
   
   // Voting state
-  const [selectedVoter, setSelectedVoter] = useState<string>('')
-  const [selectedDates, setSelectedDates] = useState<string[]>([])
+  
   
   const cycleInfo = getCurrentCycleInfo()
   const cycleEndDateStr = cycleInfo.cycleEndDate.toISOString()
@@ -189,38 +188,34 @@ export default function MalakesRoundup() {
     setShowVoting(true)
   }
   
-  const toggleDateSelection = (dateId: string) => {
-    setSelectedDates(prev => 
-      prev.includes(dateId) 
-        ? prev.filter(id => id !== dateId)
-        : [...prev, dateId]
-    )
-  }
-  
-  const handleSubmitAvailability = async () => {
-    if (!loggedInUser || selectedDates.length === 0 || !currentProposal) return
-    // Remove old votes by this user then insert new ones
-    await supabase.from('votes').delete().eq('proposal_id', currentProposal.id).eq('member_name', loggedInUser)
-    const newVotes = selectedDates.map(dateId => ({
-      proposal_id: currentProposal.id, date_option_id: dateId, member_name: loggedInUser,
-    }))
-    await supabase.from('votes').insert(newVotes)
-
-    // Optimistically update local state immediately so counts show right away
+  const handleToggleAvailability = async (dateOptionId: string, currentlyAvailable: boolean) => {
+    if (!loggedInUser || !currentProposal) return
+    if (currentlyAvailable) {
+      await supabase.from('votes').delete()
+        .eq('proposal_id', currentProposal.id)
+        .eq('date_option_id', dateOptionId)
+        .eq('member_name', loggedInUser)
+    } else {
+      await supabase.from('votes').insert({
+        proposal_id: currentProposal.id, date_option_id: dateOptionId, member_name: loggedInUser,
+      })
+    }
+    // Optimistic update
     setCurrentProposal(prev => {
       if (!prev) return prev
       return {
         ...prev,
-        dateOptions: prev.dateOptions.map(opt => ({
-          ...opt,
-          availableMembers: selectedDates.includes(opt.id)
-            ? [...opt.availableMembers.filter(m => m !== loggedInUser!), loggedInUser!]
-            : opt.availableMembers.filter(m => m !== loggedInUser),
-        }))
+        dateOptions: prev.dateOptions.map(opt => {
+          if (opt.id !== dateOptionId) return opt
+          return {
+            ...opt,
+            availableMembers: currentlyAvailable
+              ? opt.availableMembers.filter(m => m !== loggedInUser)
+              : [...opt.availableMembers, loggedInUser!]
+          }
+        })
       }
     })
-    setSelectedDates([])
-    // Then sync from DB in background
     loadData()
   }
   
@@ -477,18 +472,10 @@ export default function MalakesRoundup() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <CalendarDays className="w-4 h-4 text-primary" />
-                <span className="text-sm font-semibold">Availability Voting</span>
+                <span className="text-sm font-semibold">Availability Grid</span>
               </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => { setShowVoting(false); setCurrentProposal(null) }}
-                className="text-muted-foreground"
-              >
-                <X className="w-4 h-4" />
-              </Button>
             </div>
-            
+
             {/* Event Details */}
             <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
               <h3 className="font-semibold text-primary">{currentProposal.title}</h3>
@@ -496,92 +483,76 @@ export default function MalakesRoundup() {
                 <MapPin className="w-3 h-3" /> {currentProposal.location}
               </p>
             </div>
-            
-            {/* Date Options with Results */}
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Proposed Dates</p>
-              {currentProposal.dateOptions.map((opt) => {
-                const isMajority = opt.id === majorityDateId && opt.availableMembers.length > 0
-                return (
-                  <div 
-                    key={opt.id} 
-                    className={`p-3 rounded-lg border ${
-                      isMajority 
-                        ? 'bg-emerald-500/10 border-emerald-500/30' 
-                        : 'bg-muted/30 border-border'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">
-                          {new Date(opt.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        </span>
-                        <span className="text-xs text-muted-foreground">{opt.time}</span>
-                      </div>
-                      {isMajority && (
-                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
-                          Majority Date
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Users className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        {opt.availableMembers.length} available
-                      </span>
-                      {opt.availableMembers.length > 0 && (
-                        <span className="text-xs text-secondary">
-                          ({opt.availableMembers.join(', ')})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+
+            {/* Spreadsheet Grid */}
+            <div className="overflow-x-auto">
+              <p className="text-xs text-muted-foreground mb-2">Tap your name to mark availability ✓</p>
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="text-left p-2 text-muted-foreground font-normal border-b border-border">Date</th>
+                    {ROTATION_ORDER.map(name => (
+                      <th key={name} className={`p-2 text-center font-semibold border-b border-border ${name === loggedInUser ? 'text-primary' : 'text-muted-foreground'}`}>
+                        {name[0] + name.slice(1).toLowerCase()}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...currentProposal.dateOptions].sort((a, b) => a.date.localeCompare(b.date)).map((opt, i) => {
+                    const isMajority = opt.id === majorityDateId && opt.availableMembers.length > 0
+                    return (
+                      <tr key={opt.id} className={`border-b border-border/50 ${isMajority ? 'bg-emerald-500/10' : i % 2 === 0 ? 'bg-muted/10' : ''}`}>
+                        <td className="p-2 whitespace-nowrap">
+                          <span className="font-medium">{new Date(opt.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                          <span className="text-muted-foreground ml-1">{opt.time}</span>
+                          {isMajority && <span className="ml-1 text-emerald-400">★</span>}
+                        </td>
+                        {ROTATION_ORDER.map(name => {
+                          const isAvailable = opt.availableMembers.includes(name)
+                          const isMe = name === loggedInUser
+                          return (
+                            <td key={name} className="p-1 text-center">
+                              <button
+                                onClick={() => isMe && handleToggleAvailability(opt.id, isAvailable)}
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition-all text-xs font-bold
+                                  ${isAvailable
+                                    ? isMe ? 'bg-primary text-primary-foreground shadow-md' : 'bg-emerald-500/25 text-emerald-400'
+                                    : isMe ? 'bg-muted/40 border border-dashed border-border hover:border-primary text-muted-foreground/40' : 'bg-muted/10 text-muted-foreground/20'
+                                  } ${isMe ? 'cursor-pointer' : 'cursor-default'}`}
+                                title={isMe ? (isAvailable ? 'Click to remove' : 'Click to mark available') : name}
+                              >
+                                {isAvailable ? <Check className="w-3.5 h-3.5" /> : isMe ? '+' : ''}
+                              </button>
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
-            
-            {/* Vote Section */}
-            <div className="p-4 bg-muted/20 rounded-lg space-y-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wider">Submit Your Availability</p>
-              <p className="text-sm text-primary font-semibold">Voting as: {loggedInUser}</p>
-              
-              <div className="space-y-2">
-                {currentProposal.dateOptions.map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => toggleDateSelection(opt.id)}
-                    className={`w-full p-3 rounded-lg border flex items-center justify-between transition-all ${
-                      selectedDates.includes(opt.id)
-                        ? 'bg-primary/20 border-primary/50'
-                        : 'bg-muted/30 border-border hover:border-primary/30'
-                    }`}
-                  >
-                    <span className="text-sm">
-                      {new Date(opt.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })} - {opt.time}
-                    </span>
-                    {selectedDates.includes(opt.id) && (
-                      <Check className="w-4 h-4 text-primary" />
-                    )}
-                  </button>
-                ))}
-              </div>
-              
-              <Button 
-                onClick={handleSubmitAvailability}
-                disabled={selectedDates.length === 0}
-                className="w-full bg-secondary hover:bg-secondary/90"
-              >
-                Submit Availability
-              </Button>
-            </div>
-            
-            {/* Confirm Event Button */}
-            {majorityDateId && (
-              <Button 
+
+            {/* Majority summary */}
+            {majorityDateId && (() => {
+              const best = currentProposal.dateOptions.find(d => d.id === majorityDateId)!
+              return (
+                <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-sm">
+                  <span className="text-emerald-400 font-semibold">★ Best date: </span>
+                  {new Date(best.date + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' })} at {best.time}
+                  <span className="text-muted-foreground ml-1">({best.availableMembers.length} available)</span>
+                </div>
+              )
+            })()}
+
+            {/* Confirm Event Button - organiser + admin only */}
+            {majorityDateId && (loggedInUser === currentOrganiser || isAdmin) && (
+              <Button
                 onClick={handleConfirmEvent}
                 className="w-full bg-primary hover:bg-primary/90 glow-gold"
               >
-                Confirm Event with Majority Date
+                Confirm Event with Best Date
               </Button>
             )}
           </div>
