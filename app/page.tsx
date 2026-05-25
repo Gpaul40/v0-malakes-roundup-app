@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, Calendar, DollarSign, MapPin, Check, Users, Settings, X } from 'lucide-react'
+import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Users, Settings, X } from 'lucide-react'
+import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -91,9 +92,8 @@ export default function MalakesRoundup() {
   // Event form state
   const [eventTitle, setEventTitle] = useState('')
   const [eventLocation, setEventLocation] = useState('')
-  const [dateOptions, setDateOptions] = useState<{ date: string; time: string }[]>([
-    { date: '', time: '' }
-  ])
+  const [calendarDates, setCalendarDates] = useState<Date[]>([])
+  const [dateTimes, setDateTimes] = useState<Record<string, string>>({})
   
   // Current proposal for voting
   const [currentProposal, setCurrentProposal] = useState<EventProposal | null>(null)
@@ -139,28 +139,12 @@ export default function MalakesRoundup() {
     return () => clearInterval(timer)
   }, [cycleEndDateStr])
   
-  const addDateOption = () => {
-    if (dateOptions.length < 5) {
-      setDateOptions([...dateOptions, { date: '', time: '' }])
-    }
-  }
-  
-  const removeDateOption = (index: number) => {
-    if (dateOptions.length > 1) {
-      setDateOptions(dateOptions.filter((_, i) => i !== index))
-    }
-  }
-  
-  const updateDateOption = (index: number, field: 'date' | 'time', value: string) => {
-    const updated = [...dateOptions]
-    updated[index][field] = value
-    setDateOptions(updated)
-  }
-  
+  const toYMD = (d: Date) => d.toISOString().split('T')[0]
+
   const handleSubmitEvent = async () => {
     if (!eventTitle.trim() || !eventLocation.trim()) return
-    const validDateOptions = dateOptions.filter(d => d.date && d.time)
-    if (validDateOptions.length === 0) return
+    const validDates = calendarDates.filter(d => dateTimes[toYMD(d)])
+    if (validDates.length === 0) return
 
     const proposalId = String(Date.now())
     await supabase.from('proposals').insert({
@@ -168,12 +152,11 @@ export default function MalakesRoundup() {
       organiser_name: currentOrganiser, title: eventTitle,
       location: eventLocation, status: 'voting',
     })
-    const dateRows = validDateOptions.map((d, i) => ({
-      id: `${proposalId}-${i}`, proposal_id: proposalId, date: d.date, time: d.time,
+    const dateRows = validDates.map((d, i) => ({
+      id: `${proposalId}-${i}`, proposal_id: proposalId, date: toYMD(d), time: dateTimes[toYMD(d)],
     }))
     await supabase.from('date_options').insert(dateRows)
 
-    // Set proposal directly so voting shows immediately
     setCurrentProposal({
       id: proposalId,
       organiserId: currentMember?.id || '1',
@@ -185,7 +168,8 @@ export default function MalakesRoundup() {
     })
     setEventTitle('')
     setEventLocation('')
-    setDateOptions([{ date: '', time: '' }])
+    setCalendarDates([])
+    setDateTimes({})
     setShowEventForm(false)
     setShowVoting(true)
   }
@@ -462,7 +446,7 @@ export default function MalakesRoundup() {
           <div className="glass-card rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary" />
+                <CalendarDays className="w-4 h-4 text-primary" />
                 <span className="text-sm font-semibold">Availability Voting</span>
               </div>
               <Button 
@@ -575,7 +559,7 @@ export default function MalakesRoundup() {
           <div className="glass-card rounded-xl p-5">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary" />
+                <CalendarDays className="w-4 h-4 text-primary" />
                 <span className="text-sm font-semibold">Submit Event</span>
               </div>
               {!showEventForm && (loggedInUser === currentOrganiser || isAdmin) && (
@@ -612,45 +596,44 @@ export default function MalakesRoundup() {
                   />
                 </div>
                 
-                {/* Date Options */}
+                {/* Date Options - Calendar */}
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Proposed Dates & Times</p>
-                  {dateOptions.map((opt, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <Input
-                        type="date"
-                        value={opt.date}
-                        onChange={(e) => updateDateOption(index, 'date', e.target.value)}
-                        className="bg-muted/30 border-border flex-1"
-                      />
-                      <Input
-                        type="time"
-                        value={opt.time}
-                        onChange={(e) => updateDateOption(index, 'time', e.target.value)}
-                        className="bg-muted/30 border-border w-24"
-                      />
-                      {dateOptions.length > 1 && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={() => removeDateOption(index)}
-                          className="text-muted-foreground hover:text-red-400 px-2"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
-                      )}
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                    Proposed Dates — {cycleInfo.cycleStartDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} to {cycleInfo.cycleEndDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </p>
+                  <div className="flex justify-center bg-muted/20 rounded-lg p-2">
+                    <Calendar
+                      mode="multiple"
+                      selected={calendarDates}
+                      onSelect={(dates) => {
+                        const next = dates || []
+                        if (next.length <= 5) setCalendarDates(next)
+                      }}
+                      disabled={(date) => date < cycleInfo.cycleStartDate || date > cycleInfo.cycleEndDate}
+                      defaultMonth={cycleInfo.cycleStartDate}
+                    />
+                  </div>
+                  {calendarDates.length > 0 && (
+                    <div className="space-y-2 mt-2">
+                      <p className="text-xs text-muted-foreground">Add a time for each selected date:</p>
+                      {[...calendarDates].sort((a, b) => a.getTime() - b.getTime()).map((d) => {
+                        const key = toYMD(d)
+                        return (
+                          <div key={key} className="flex items-center gap-2">
+                            <span className="text-sm flex-1">{d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                            <Input
+                              type="time"
+                              value={dateTimes[key] || ''}
+                              onChange={(e) => setDateTimes(prev => ({ ...prev, [key]: e.target.value }))}
+                              className="bg-muted/30 border-border w-28"
+                            />
+                          </div>
+                        )
+                      })}
                     </div>
-                  ))}
-                  {dateOptions.length < 5 && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={addDateOption}
-                      className="text-secondary"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Add Another Date
-                    </Button>
+                  )}
+                  {calendarDates.length === 0 && (
+                    <p className="text-xs text-muted-foreground/60 text-center">Tap dates on the calendar (up to 5)</p>
                   )}
                 </div>
                 
@@ -663,7 +646,7 @@ export default function MalakesRoundup() {
                   </Button>
                   <Button 
                     variant="outline" 
-                    onClick={() => { setShowEventForm(false); setDateOptions([{ date: '', time: '' }]) }}
+                    onClick={() => { setShowEventForm(false); setCalendarDates([]); setDateTimes({}) }}
                     className="border-border"
                   >
                     Cancel
