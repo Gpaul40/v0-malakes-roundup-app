@@ -20,6 +20,7 @@ export default function MalakesRoundup() {
   const [finesState, setFinesState] = useState<Fine[]>([])
   const [showEventForm, setShowEventForm] = useState(false)
   const [showVoting, setShowVoting] = useState(false)
+  const [showEventComplete, setShowEventComplete] = useState(false)
   const [loading, setLoading] = useState(true)
   
   // Admin override for current organiser
@@ -235,6 +236,7 @@ export default function MalakesRoundup() {
     await supabase.from('proposals').update({ status: 'confirmed' }).eq('id', currentProposal.id)
     setCurrentProposal(null)
     setShowVoting(false)
+    setShowEventComplete(true)
     await loadData()
   }
   
@@ -420,6 +422,40 @@ export default function MalakesRoundup() {
             <ChevronRight className="w-5 h-5 text-muted-foreground" />
           </div>
         </div>
+
+        {/* Event Complete Banner */}
+        {showEventComplete && (() => {
+          const nextStart = new Date(cycleInfo.cycleEndDate.getTime() + 24 * 60 * 60 * 1000)
+          const nextStartStr = nextStart.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long' })
+          return (
+            <div className="glass-card rounded-xl p-5 border border-emerald-500/40 bg-emerald-500/5">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Check className="w-5 h-5 text-emerald-400" />
+                  <span className="text-sm font-bold text-emerald-400 uppercase tracking-wider">Event Complete!</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowEventComplete(false)}
+                  className="text-muted-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-sm text-muted-foreground mb-1">
+                Well done <span className="text-primary font-semibold">{currentOrganiser}</span>, you fulfilled your duty.
+              </p>
+              <div className="mt-3 p-3 rounded-lg bg-muted/30 border border-border">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Next Up</p>
+                <p className="text-lg font-bold text-gold-gradient">{nextOrganiser}</p>
+                <p className="text-sm text-muted-foreground">
+                  Turn commences <span className="text-secondary font-semibold">{nextStartStr}</span>
+                </p>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Event Submission / Voting Section */}
         {showVoting && currentProposal ? (
