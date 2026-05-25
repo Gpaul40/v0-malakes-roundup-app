@@ -243,37 +243,6 @@ export default function MalakesRoundup() {
       </header>
 
       <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
-        {/* Admin Override */}
-        <div className="glass-card rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Settings className="w-4 h-4 text-secondary" />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Admin Control</span>
-          </div>
-          <Select 
-            value={overrideOrganiser || ''} 
-            onValueChange={(value) => setOverrideOrganiser(value || null)}
-          >
-            <SelectTrigger className="bg-muted/30 border-border">
-              <SelectValue placeholder="Change Current Organiser" />
-            </SelectTrigger>
-            <SelectContent>
-              {ROTATION_ORDER.map((name) => (
-                <SelectItem key={name} value={name}>{name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {overrideOrganiser && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setOverrideOrganiser(null)}
-              className="mt-2 text-xs text-muted-foreground"
-            >
-              Reset to automatic rotation
-            </Button>
-          )}
-        </div>
-
         {/* Current Organiser Card */}
         <div className="glass-card rounded-xl p-5 glow-gold">
           <div className="flex items-center justify-between mb-4">
