@@ -130,12 +130,13 @@ export default function MalakesRoundup() {
     
     const updatedProposal = {
       ...currentProposal,
-      dateOptions: currentProposal.dateOptions.map(opt => ({
-        ...opt,
-        availableMembers: selectedDates.includes(opt.id) && !opt.availableMembers.includes(selectedVoter)
-          ? [...opt.availableMembers, selectedVoter]
-          : opt.availableMembers,
-      })),
+      dateOptions: currentProposal.dateOptions.map(opt => {
+        const withoutVoter = opt.availableMembers.filter(member => member !== selectedVoter)
+        return {
+          ...opt,
+          availableMembers: selectedDates.includes(opt.id) ? [...withoutVoter, selectedVoter] : withoutVoter,
+        }
+      }),
     }
     
     setCurrentProposal(updatedProposal)
@@ -187,6 +188,8 @@ export default function MalakesRoundup() {
   const outstandingFines = finesState.filter(f => !f.paid)
   const totalOutstanding = outstandingFines.reduce((sum, f) => sum + f.amount, 0)
   const majorityDateId = getMajorityDate()
+  const hasSubmittedAvailability =
+    !!selectedVoter && !!currentProposal && currentProposal.dateOptions.some(opt => opt.availableMembers.includes(selectedVoter))
 
   // Opening Modal
   if (showModal) {
@@ -422,6 +425,11 @@ export default function MalakesRoundup() {
                   ))}
                 </SelectContent>
               </Select>
+              {hasSubmittedAvailability && (
+                <p className="text-xs text-secondary">
+                  Updating your previous availability submission.
+                </p>
+              )}
               
               <div className="space-y-2">
                 {currentProposal.dateOptions.map((opt) => (
@@ -449,7 +457,7 @@ export default function MalakesRoundup() {
                 disabled={!selectedVoter || selectedDates.length === 0}
                 className="w-full bg-secondary hover:bg-secondary/90"
               >
-                Submit Availability
+                {hasSubmittedAvailability ? 'Update Availability' : 'Submit Availability'}
               </Button>
             </div>
             
