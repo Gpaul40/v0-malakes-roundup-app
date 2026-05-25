@@ -57,6 +57,10 @@ export default function MalakesRoundup() {
       supabase.from('proposals').select('*, date_options(*, votes(*))').eq('status', 'voting').order('created_at', { ascending: false }).limit(1),
     ])
 
+    if (eventsRes.error) console.error('events error:', eventsRes.error)
+    if (finesRes.error) console.error('fines error:', finesRes.error)
+    if (proposalsRes.error) console.error('proposals error:', proposalsRes.error)
+
     if (eventsRes.data) {
       setEventsState(eventsRes.data.map((e: any) => ({
         id: e.id, organiserId: e.organiser_id, organiserName: e.organiser_name,
@@ -81,6 +85,9 @@ export default function MalakesRoundup() {
         })),
       })
       setShowVoting(true)
+    } else {
+      setShowVoting(false)
+      setCurrentProposal(null)
     }
     setLoading(false)
   }, [])
