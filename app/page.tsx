@@ -249,6 +249,7 @@ export default function MalakesRoundup() {
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               className="bg-muted/30 border-border"
             />
+            <p className="text-xs text-muted-foreground/60">Password is your name</p>
             {loginError && <p className="text-red-400 text-xs">{loginError}</p>}
           </div>
           
