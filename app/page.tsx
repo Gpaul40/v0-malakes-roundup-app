@@ -54,7 +54,7 @@ export default function MalakesRoundup() {
     const [eventsRes, finesRes, proposalsRes] = await Promise.all([
       supabase.from('events').select('*').order('created_at', { ascending: false }),
       supabase.from('fines').select('*').order('created_at', { ascending: false }),
-      supabase.from('proposals').select('*, date_options(*, votes(*))').eq('status', 'voting').maybeSingle(),
+      supabase.from('proposals').select('*, date_options(*, votes(*))').eq('status', 'voting').order('created_at', { ascending: false }).limit(1),
     ])
 
     if (eventsRes.data) {
@@ -70,8 +70,8 @@ export default function MalakesRoundup() {
         amount: f.amount, reason: f.reason, date: f.date, paid: f.paid,
       })))
     }
-    if (proposalsRes.data) {
-      const p = proposalsRes.data as any
+    if (proposalsRes.data && proposalsRes.data.length > 0) {
+      const p = proposalsRes.data[0] as any
       setCurrentProposal({
         id: p.id, organiserId: p.organiser_id, organiserName: p.organiser_name,
         title: p.title, location: p.location, status: p.status,
