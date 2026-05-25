@@ -1,7 +1,7 @@
 import { Member, Event, Fine, CycleInfo, MemberStatus } from './types'
 
-// Rotation order - fixed sequence
-const rotationOrder = ['GREG', 'ZAK', 'GABE', 'KOZZY', 'SAMMY', 'KION']
+// Rotation order - fixed sequence starting with GREG from 25/05/2025
+export const ROTATION_ORDER = ['GREG', 'ZAK', 'GABE', 'KOZZY', 'SAMMY', 'KION']
 
 // Rotation start date: 25/05/2025
 const ROTATION_START = new Date('2025-05-25T00:00:00')
@@ -31,7 +31,7 @@ export function getCurrentCycleInfo(): {
   }
   
   const cycleNumber = Math.floor(daysSinceStart / CYCLE_DAYS) + 1
-  const currentOrganiserIndex = (cycleNumber - 1) % rotationOrder.length
+  const currentOrganiserIndex = (cycleNumber - 1) % ROTATION_ORDER.length
   const cycleStartDate = new Date(ROTATION_START.getTime() + (cycleNumber - 1) * CYCLE_DAYS * msPerDay)
   const cycleEndDate = new Date(cycleStartDate.getTime() + (CYCLE_DAYS - 1) * msPerDay)
   const daysIntoCycle = daysSinceStart % CYCLE_DAYS
@@ -48,13 +48,13 @@ export function getCurrentCycleInfo(): {
 
 export function getCurrentOrganiser(): string {
   const { currentOrganiserIndex } = getCurrentCycleInfo()
-  return rotationOrder[currentOrganiserIndex]
+  return ROTATION_ORDER[currentOrganiserIndex]
 }
 
 export function getNextOrganiser(): string {
   const { currentOrganiserIndex } = getCurrentCycleInfo()
-  const nextIndex = (currentOrganiserIndex + 1) % rotationOrder.length
-  return rotationOrder[nextIndex]
+  const nextIndex = (currentOrganiserIndex + 1) % ROTATION_ORDER.length
+  return ROTATION_ORDER[nextIndex]
 }
 
 export const members: Member[] = [

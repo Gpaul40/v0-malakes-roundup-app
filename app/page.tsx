@@ -1,25 +1,46 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, Calendar, DollarSign } from 'lucide-react'
+import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, Calendar, DollarSign, MapPin, Check, Users, Settings, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { members, events, fines, getCurrentOrganiser, getNextOrganiser, getCurrentCycleInfo, getStatusColor } from '@/lib/data'
-import { Member, Event, Fine } from '@/lib/types'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { members as initialMembers, events, fines, getCurrentCycleInfo, getStatusColor, ROTATION_ORDER } from '@/lib/data'
+import { Member, Event, Fine, DateOption, EventProposal } from '@/lib/types'
 
 export default function MalakesRoundup() {
   const [showModal, setShowModal] = useState(true)
-  const [membersState] = useState<Member[]>(members)
+  const [membersState] = useState<Member[]>(initialMembers)
   const [eventsState, setEventsState] = useState<Event[]>(events)
   const [finesState, setFinesState] = useState<Fine[]>(fines)
   const [showEventForm, setShowEventForm] = useState(false)
-  const [eventTitle, setEventTitle] = useState('')
-  const [eventDescription, setEventDescription] = useState('')
+  const [showVoting, setShowVoting] = useState(false)
   
-  const currentOrganiser = getCurrentOrganiser()
-  const nextOrganiser = getNextOrganiser()
+  // Admin override for current organiser
+  const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
+  
+  // Event form state
+  const [eventTitle, setEventTitle] = useState('')
+  const [eventLocation, setEventLocation] = useState('')
+  const [dateOptions, setDateOptions] = useState<{ date: string; time: string }[]>([
+    { date: '', time: '' }
+  ])
+  
+  // Current proposal for voting
+  const [currentProposal, setCurrentProposal] = useState<EventProposal | null>(null)
+  
+  // Voting state
+  const [selectedVoter, setSelectedVoter] = useState<string>('')
+  const [selectedDates, setSelectedDates] = useState<string[]>([])
+  
   const cycleInfo = getCurrentCycleInfo()
+  const cycleEndDateStr = cycleInfo.cycleEndDate.toISOString()
+  
+  // Use override or calculated organiser
+  const currentOrganiser = overrideOrganiser || ROTATION_ORDER[cycleInfo.currentOrganiserIndex]
+  const nextOrganiserIndex = (ROTATION_ORDER.indexOf(currentOrganiser) + 1) % ROTATION_ORDER.length
+  const nextOrganiser = ROTATION_ORDER[nextOrganiserIndex]
+  
   const currentMember = membersState.find(m => m.name === currentOrganiser)
   
   // Countdown timer
@@ -28,7 +49,7 @@ export default function MalakesRoundup() {
   useEffect(() => {
     const calculateTimeLeft = () => {
       const now = new Date()
-      const endDate = new Date(cycleInfo.cycleEndDate)
+      const endDate = new Date(cycleEndDateStr)
       endDate.setHours(23, 59, 59, 999)
       const diff = endDate.getTime() - now.getTime()
       
@@ -47,24 +68,114 @@ export default function MalakesRoundup() {
     setTimeLeft(calculateTimeLeft())
     const timer = setInterval(() => setTimeLeft(calculateTimeLeft()), 1000)
     return () => clearInterval(timer)
-  }, [cycleInfo.cycleEndDate])
+  }, [cycleEndDateStr])
+  
+  const addDateOption = () => {
+    if (dateOptions.length < 5) {
+      setDateOptions([...dateOptions, { date: '', time: '' }])
+    }
+  }
+  
+  const removeDateOption = (index: number) => {
+    if (dateOptions.length > 1) {
+      setDateOptions(dateOptions.filter((_, i) => i !== index))
+    }
+  }
+  
+  const updateDateOption = (index: number, field: 'date' | 'time', value: string) => {
+    const updated = [...dateOptions]
+    updated[index][field] = value
+    setDateOptions(updated)
+  }
   
   const handleSubmitEvent = () => {
-    if (!eventTitle.trim()) return
-    const newEvent: Event = {
-      id: String(eventsState.length + 1),
+    if (!eventTitle.trim() || !eventLocation.trim()) return
+    
+    const validDateOptions = dateOptions.filter(d => d.date && d.time)
+    if (validDateOptions.length === 0) return
+    
+    const proposal: EventProposal = {
+      id: String(Date.now()),
       organiserId: currentMember?.id || '1',
       organiserName: currentOrganiser,
       title: eventTitle,
-      date: new Date().toISOString().split('T')[0],
-      description: eventDescription || 'No description provided.',
-      attendees: membersState.filter(m => m.name !== currentOrganiser).map(m => m.name),
-      rating: 0,
+      location: eventLocation,
+      dateOptions: validDateOptions.map((d, i) => ({
+        id: String(i + 1),
+        date: d.date,
+        time: d.time,
+        availableMembers: [],
+      })),
+      status: 'voting',
     }
-    setEventsState([newEvent, ...eventsState])
-    setEventTitle('')
-    setEventDescription('')
+    
+    setCurrentProposal(proposal)
     setShowEventForm(false)
+    setShowVoting(true)
+    setEventTitle('')
+    setEventLocation('')
+    setDateOptions([{ date: '', time: '' }])
+  }
+  
+  const toggleDateSelection = (dateId: string) => {
+    setSelectedDates(prev => 
+      prev.includes(dateId) 
+        ? prev.filter(id => id !== dateId)
+        : [...prev, dateId]
+    )
+  }
+  
+  const handleSubmitAvailability = () => {
+    if (!selectedVoter || selectedDates.length === 0 || !currentProposal) return
+    
+    const updatedProposal = {
+      ...currentProposal,
+      dateOptions: currentProposal.dateOptions.map(opt => ({
+        ...opt,
+        availableMembers: selectedDates.includes(opt.id) && !opt.availableMembers.includes(selectedVoter)
+          ? [...opt.availableMembers, selectedVoter]
+          : opt.availableMembers,
+      })),
+    }
+    
+    setCurrentProposal(updatedProposal)
+    setSelectedVoter('')
+    setSelectedDates([])
+  }
+  
+  const getMajorityDate = () => {
+    if (!currentProposal) return null
+    const sorted = [...currentProposal.dateOptions].sort(
+      (a, b) => b.availableMembers.length - a.availableMembers.length
+    )
+    if (sorted[0]?.availableMembers.length > 0) {
+      return sorted[0].id
+    }
+    return null
+  }
+  
+  const handleConfirmEvent = () => {
+    if (!currentProposal) return
+    
+    const majorityDateId = getMajorityDate()
+    const majorityDate = currentProposal.dateOptions.find(d => d.id === majorityDateId)
+    
+    if (majorityDate) {
+      const newEvent: Event = {
+        id: String(eventsState.length + 1),
+        organiserId: currentProposal.organiserId,
+        organiserName: currentProposal.organiserName,
+        title: currentProposal.title,
+        date: majorityDate.date,
+        description: `Location: ${currentProposal.location}`,
+        attendees: majorityDate.availableMembers,
+        rating: 0,
+      }
+      setEventsState([newEvent, ...eventsState])
+    }
+    
+    setCurrentProposal(null)
+    setShowVoting(false)
   }
   
   const handlePayFine = (fineId: string) => {
@@ -75,6 +186,7 @@ export default function MalakesRoundup() {
   const leaderboard = [...membersState].sort((a, b) => b.eventsOrganised - a.eventsOrganised)
   const outstandingFines = finesState.filter(f => !f.paid)
   const totalOutstanding = outstandingFines.reduce((sum, f) => sum + f.amount, 0)
+  const majorityDateId = getMajorityDate()
 
   // Opening Modal
   if (showModal) {
@@ -131,6 +243,37 @@ export default function MalakesRoundup() {
       </header>
 
       <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
+        {/* Admin Override */}
+        <div className="glass-card rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Settings className="w-4 h-4 text-secondary" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Admin Control</span>
+          </div>
+          <Select 
+            value={overrideOrganiser || ''} 
+            onValueChange={(value) => setOverrideOrganiser(value || null)}
+          >
+            <SelectTrigger className="bg-muted/30 border-border">
+              <SelectValue placeholder="Change Current Organiser" />
+            </SelectTrigger>
+            <SelectContent>
+              {ROTATION_ORDER.map((name) => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {overrideOrganiser && (
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setOverrideOrganiser(null)}
+              className="mt-2 text-xs text-muted-foreground"
+            >
+              Reset to automatic rotation
+            </Button>
+          )}
+        </div>
+
         {/* Current Organiser Card */}
         <div className="glass-card rounded-xl p-5 glow-gold">
           <div className="flex items-center justify-between mb-4">
@@ -196,61 +339,232 @@ export default function MalakesRoundup() {
           </div>
         </div>
 
-        {/* Event Submission */}
-        <div className="glass-card rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold">Submit Event</span>
-            </div>
-            {!showEventForm && (
+        {/* Event Submission / Voting Section */}
+        {showVoting && currentProposal ? (
+          <div className="glass-card rounded-xl p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Availability Voting</span>
+              </div>
               <Button 
+                variant="ghost" 
                 size="sm" 
-                onClick={() => setShowEventForm(true)}
-                className="bg-primary/20 hover:bg-primary/30 text-primary"
+                onClick={() => { setShowVoting(false); setCurrentProposal(null) }}
+                className="text-muted-foreground"
               >
-                <Plus className="w-4 h-4 mr-1" />
-                New
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Event Details */}
+            <div className="p-3 bg-primary/10 rounded-lg border border-primary/30">
+              <h3 className="font-semibold text-primary">{currentProposal.title}</h3>
+              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                <MapPin className="w-3 h-3" /> {currentProposal.location}
+              </p>
+            </div>
+            
+            {/* Date Options with Results */}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Proposed Dates</p>
+              {currentProposal.dateOptions.map((opt) => {
+                const isMajority = opt.id === majorityDateId && opt.availableMembers.length > 0
+                return (
+                  <div 
+                    key={opt.id} 
+                    className={`p-3 rounded-lg border ${
+                      isMajority 
+                        ? 'bg-emerald-500/10 border-emerald-500/30' 
+                        : 'bg-muted/30 border-border'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          {new Date(opt.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{opt.time}</span>
+                      </div>
+                      {isMajority && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
+                          Majority Date
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        {opt.availableMembers.length} available
+                      </span>
+                      {opt.availableMembers.length > 0 && (
+                        <span className="text-xs text-secondary">
+                          ({opt.availableMembers.join(', ')})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            
+            {/* Vote Section */}
+            <div className="p-4 bg-muted/20 rounded-lg space-y-3">
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Submit Your Availability</p>
+              
+              <Select value={selectedVoter} onValueChange={setSelectedVoter}>
+                <SelectTrigger className="bg-muted/30 border-border">
+                  <SelectValue placeholder="Select your name" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROTATION_ORDER.map((name) => (
+                    <SelectItem key={name} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              <div className="space-y-2">
+                {currentProposal.dateOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => toggleDateSelection(opt.id)}
+                    className={`w-full p-3 rounded-lg border flex items-center justify-between transition-all ${
+                      selectedDates.includes(opt.id)
+                        ? 'bg-primary/20 border-primary/50'
+                        : 'bg-muted/30 border-border hover:border-primary/30'
+                    }`}
+                  >
+                    <span className="text-sm">
+                      {new Date(opt.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })} - {opt.time}
+                    </span>
+                    {selectedDates.includes(opt.id) && (
+                      <Check className="w-4 h-4 text-primary" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              
+              <Button 
+                onClick={handleSubmitAvailability}
+                disabled={!selectedVoter || selectedDates.length === 0}
+                className="w-full bg-secondary hover:bg-secondary/90"
+              >
+                Submit Availability
+              </Button>
+            </div>
+            
+            {/* Confirm Event Button */}
+            {majorityDateId && (
+              <Button 
+                onClick={handleConfirmEvent}
+                className="w-full bg-primary hover:bg-primary/90 glow-gold"
+              >
+                Confirm Event with Majority Date
               </Button>
             )}
           </div>
-          
-          {showEventForm ? (
-            <div className="space-y-3">
-              <Input
-                placeholder="Event title..."
-                value={eventTitle}
-                onChange={(e) => setEventTitle(e.target.value)}
-                className="bg-muted/30 border-border"
-              />
-              <Textarea
-                placeholder="Event description..."
-                value={eventDescription}
-                onChange={(e) => setEventDescription(e.target.value)}
-                className="bg-muted/30 border-border min-h-[80px]"
-              />
-              <div className="flex gap-2">
-                <Button 
-                  onClick={handleSubmitEvent}
-                  className="flex-1 bg-primary hover:bg-primary/90"
-                >
-                  Submit
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => setShowEventForm(false)}
-                  className="border-border"
-                >
-                  Cancel
-                </Button>
+        ) : (
+          <div className="glass-card rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-primary" />
+                <span className="text-sm font-semibold">Submit Event</span>
               </div>
+              {!showEventForm && (
+                <Button 
+                  size="sm" 
+                  onClick={() => setShowEventForm(true)}
+                  className="bg-primary/20 hover:bg-primary/30 text-primary"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  New
+                </Button>
+              )}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {currentOrganiser}, submit your event details here.
-            </p>
-          )}
-        </div>
+            
+            {showEventForm ? (
+              <div className="space-y-3">
+                <Input
+                  placeholder="Event title..."
+                  value={eventTitle}
+                  onChange={(e) => setEventTitle(e.target.value)}
+                  className="bg-muted/30 border-border"
+                />
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Location..."
+                    value={eventLocation}
+                    onChange={(e) => setEventLocation(e.target.value)}
+                    className="bg-muted/30 border-border flex-1"
+                  />
+                </div>
+                
+                {/* Date Options */}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Proposed Dates & Times</p>
+                  {dateOptions.map((opt, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={opt.date}
+                        onChange={(e) => updateDateOption(index, 'date', e.target.value)}
+                        className="bg-muted/30 border-border flex-1"
+                      />
+                      <Input
+                        type="time"
+                        value={opt.time}
+                        onChange={(e) => updateDateOption(index, 'time', e.target.value)}
+                        className="bg-muted/30 border-border w-24"
+                      />
+                      {dateOptions.length > 1 && (
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => removeDateOption(index)}
+                          className="text-muted-foreground hover:text-red-400 px-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  {dateOptions.length < 5 && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={addDateOption}
+                      className="text-secondary"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Another Date
+                    </Button>
+                  )}
+                </div>
+                
+                <div className="flex gap-2 pt-2">
+                  <Button 
+                    onClick={handleSubmitEvent}
+                    className="flex-1 bg-primary hover:bg-primary/90"
+                  >
+                    Create & Start Voting
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => { setShowEventForm(false); setDateOptions([{ date: '', time: '' }]) }}
+                    className="border-border"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {currentOrganiser}, submit your event proposal with date options.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Fine Tracker */}
         <div className="glass-card rounded-xl p-5">
@@ -344,7 +658,7 @@ export default function MalakesRoundup() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mb-1">
-                  by {event.organiserName} • {new Date(event.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
+                  by {event.organiserName} - {new Date(event.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
                 </p>
                 <p className="text-xs text-muted-foreground/80 line-clamp-2">
                   {event.description}

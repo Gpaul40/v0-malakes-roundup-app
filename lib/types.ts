@@ -10,6 +10,24 @@ export interface Member {
   totalFineAmount: number
 }
 
+export interface DateOption {
+  id: string
+  date: string
+  time: string
+  availableMembers: string[]
+}
+
+export interface EventProposal {
+  id: string
+  organiserId: string
+  organiserName: string
+  title: string
+  location: string
+  dateOptions: DateOption[]
+  status: 'voting' | 'confirmed'
+  confirmedDate?: string
+}
+
 export interface Event {
   id: string
   organiserId: string
