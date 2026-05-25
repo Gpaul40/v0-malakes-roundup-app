@@ -86,7 +86,12 @@ export default function MalakesRoundup() {
   }, [])
 
   useEffect(() => {
-    if (!showModal) loadData()
+    if (!showModal) {
+      loadData()
+      // Poll every 30 seconds so all users see live updates
+      const interval = setInterval(loadData, 30000)
+      return () => clearInterval(interval)
+    }
   }, [showModal, loadData])
   
   // Event form state
