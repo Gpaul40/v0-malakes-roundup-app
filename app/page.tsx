@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, Calendar, DollarSign, MapPin, Check, Users, Settings, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { members as initialMembers, events, fines, getCurrentCycleInfo, getStatusColor, ROTATION_ORDER } from '@/lib/data'
-import { Member, Event, Fine, DateOption, EventProposal } from '@/lib/types'
+import { members as initialMembers, getCurrentCycleInfo, getStatusColor, ROTATION_ORDER } from '@/lib/data'
+import { Member, Event, Fine, EventProposal } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
 
 export default function MalakesRoundup() {
   const [showModal, setShowModal] = useState(true)
@@ -15,10 +16,11 @@ export default function MalakesRoundup() {
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
   const [membersState] = useState<Member[]>(initialMembers)
-  const [eventsState, setEventsState] = useState<Event[]>(events)
-  const [finesState, setFinesState] = useState<Fine[]>(fines)
+  const [eventsState, setEventsState] = useState<Event[]>([])
+  const [finesState, setFinesState] = useState<Fine[]>([])
   const [showEventForm, setShowEventForm] = useState(false)
   const [showVoting, setShowVoting] = useState(false)
+  const [loading, setLoading] = useState(true)
   
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
@@ -44,6 +46,46 @@ export default function MalakesRoundup() {
       setLoginError('Wrong password, try again')
     }
   }
+
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    const [eventsRes, finesRes, proposalsRes] = await Promise.all([
+      supabase.from('events').select('*').order('created_at', { ascending: false }),
+      supabase.from('fines').select('*').order('created_at', { ascending: false }),
+      supabase.from('proposals').select('*, date_options(*, votes(*))').eq('status', 'voting').maybeSingle(),
+    ])
+
+    if (eventsRes.data) {
+      setEventsState(eventsRes.data.map((e: any) => ({
+        id: e.id, organiserId: e.organiser_id, organiserName: e.organiser_name,
+        title: e.title, date: e.date, description: e.description,
+        attendees: e.attendees || [], rating: e.rating || 0,
+      })))
+    }
+    if (finesRes.data) {
+      setFinesState(finesRes.data.map((f: any) => ({
+        id: f.id, memberId: f.member_id, memberName: f.member_name,
+        amount: f.amount, reason: f.reason, date: f.date, paid: f.paid,
+      })))
+    }
+    if (proposalsRes.data) {
+      const p = proposalsRes.data as any
+      setCurrentProposal({
+        id: p.id, organiserId: p.organiser_id, organiserName: p.organiser_name,
+        title: p.title, location: p.location, status: p.status,
+        dateOptions: (p.date_options || []).map((d: any) => ({
+          id: d.id, date: d.date, time: d.time,
+          availableMembers: (d.votes || []).map((v: any) => v.member_name),
+        })),
+      })
+      setShowVoting(true)
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (!showModal) loadData()
+  }, [showModal, loadData])
   
   // Event form state
   const [eventTitle, setEventTitle] = useState('')
@@ -114,33 +156,27 @@ export default function MalakesRoundup() {
     setDateOptions(updated)
   }
   
-  const handleSubmitEvent = () => {
+  const handleSubmitEvent = async () => {
     if (!eventTitle.trim() || !eventLocation.trim()) return
-    
     const validDateOptions = dateOptions.filter(d => d.date && d.time)
     if (validDateOptions.length === 0) return
-    
-    const proposal: EventProposal = {
-      id: String(Date.now()),
-      organiserId: currentMember?.id || '1',
-      organiserName: currentOrganiser,
-      title: eventTitle,
-      location: eventLocation,
-      dateOptions: validDateOptions.map((d, i) => ({
-        id: String(i + 1),
-        date: d.date,
-        time: d.time,
-        availableMembers: [],
-      })),
-      status: 'voting',
-    }
-    
-    setCurrentProposal(proposal)
-    setShowEventForm(false)
-    setShowVoting(true)
+
+    const proposalId = String(Date.now())
+    await supabase.from('proposals').insert({
+      id: proposalId, organiser_id: currentMember?.id || '1',
+      organiser_name: currentOrganiser, title: eventTitle,
+      location: eventLocation, status: 'voting',
+    })
+    const dateRows = validDateOptions.map((d, i) => ({
+      id: `${proposalId}-${i}`, proposal_id: proposalId, date: d.date, time: d.time,
+    }))
+    await supabase.from('date_options').insert(dateRows)
+
     setEventTitle('')
     setEventLocation('')
     setDateOptions([{ date: '', time: '' }])
+    setShowEventForm(false)
+    await loadData()
   }
   
   const toggleDateSelection = (dateId: string) => {
@@ -151,22 +187,16 @@ export default function MalakesRoundup() {
     )
   }
   
-  const handleSubmitAvailability = () => {
-    if (!selectedVoter || selectedDates.length === 0 || !currentProposal) return
-    
-    const updatedProposal = {
-      ...currentProposal,
-      dateOptions: currentProposal.dateOptions.map(opt => ({
-        ...opt,
-        availableMembers: selectedDates.includes(opt.id) && !opt.availableMembers.includes(selectedVoter)
-          ? [...opt.availableMembers, selectedVoter]
-          : opt.availableMembers,
-      })),
-    }
-    
-    setCurrentProposal(updatedProposal)
-    setSelectedVoter('')
+  const handleSubmitAvailability = async () => {
+    if (!loggedInUser || selectedDates.length === 0 || !currentProposal) return
+    // Remove old votes by this user then insert new ones
+    await supabase.from('votes').delete().eq('proposal_id', currentProposal.id).eq('member_name', loggedInUser)
+    const newVotes = selectedDates.map(dateId => ({
+      proposal_id: currentProposal.id, date_option_id: dateId, member_name: loggedInUser,
+    }))
+    await supabase.from('votes').insert(newVotes)
     setSelectedDates([])
+    await loadData()
   }
   
   const getMajorityDate = () => {
@@ -180,31 +210,26 @@ export default function MalakesRoundup() {
     return null
   }
   
-  const handleConfirmEvent = () => {
+  const handleConfirmEvent = async () => {
     if (!currentProposal) return
-    
     const majorityDateId = getMajorityDate()
     const majorityDate = currentProposal.dateOptions.find(d => d.id === majorityDateId)
-    
     if (majorityDate) {
-      const newEvent: Event = {
-        id: String(eventsState.length + 1),
-        organiserId: currentProposal.organiserId,
-        organiserName: currentProposal.organiserName,
-        title: currentProposal.title,
-        date: majorityDate.date,
-        description: `Location: ${currentProposal.location}`,
-        attendees: majorityDate.availableMembers,
-        rating: 0,
-      }
-      setEventsState([newEvent, ...eventsState])
+      await supabase.from('events').insert({
+        id: String(Date.now()), organiser_id: currentProposal.organiserId,
+        organiser_name: currentProposal.organiserName, title: currentProposal.title,
+        date: majorityDate.date, description: `Location: ${currentProposal.location}`,
+        attendees: majorityDate.availableMembers, rating: 0,
+      })
     }
-    
+    await supabase.from('proposals').update({ status: 'confirmed' }).eq('id', currentProposal.id)
     setCurrentProposal(null)
     setShowVoting(false)
+    await loadData()
   }
   
-  const handlePayFine = (fineId: string) => {
+  const handlePayFine = async (fineId: string) => {
+    await supabase.from('fines').update({ paid: true }).eq('id', fineId)
     setFinesState(finesState.map(f => f.id === fineId ? { ...f, paid: true } : f))
   }
   
@@ -458,17 +483,7 @@ export default function MalakesRoundup() {
             {/* Vote Section */}
             <div className="p-4 bg-muted/20 rounded-lg space-y-3">
               <p className="text-xs text-muted-foreground uppercase tracking-wider">Submit Your Availability</p>
-              
-              <Select value={selectedVoter} onValueChange={setSelectedVoter}>
-                <SelectTrigger className="bg-muted/30 border-border">
-                  <SelectValue placeholder="Select your name" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROTATION_ORDER.map((name) => (
-                    <SelectItem key={name} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <p className="text-sm text-primary font-semibold">Voting as: {loggedInUser}</p>
               
               <div className="space-y-2">
                 {currentProposal.dateOptions.map((opt) => (
@@ -493,7 +508,7 @@ export default function MalakesRoundup() {
               
               <Button 
                 onClick={handleSubmitAvailability}
-                disabled={!selectedVoter || selectedDates.length === 0}
+                disabled={selectedDates.length === 0}
                 className="w-full bg-secondary hover:bg-secondary/90"
               >
                 Submit Availability
