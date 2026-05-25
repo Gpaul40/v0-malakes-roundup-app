@@ -172,11 +172,21 @@ export default function MalakesRoundup() {
     }))
     await supabase.from('date_options').insert(dateRows)
 
+    // Set proposal directly so voting shows immediately
+    setCurrentProposal({
+      id: proposalId,
+      organiserId: currentMember?.id || '1',
+      organiserName: currentOrganiser,
+      title: eventTitle,
+      location: eventLocation,
+      status: 'voting',
+      dateOptions: dateRows.map(d => ({ id: d.id, date: d.date, time: d.time, availableMembers: [] })),
+    })
     setEventTitle('')
     setEventLocation('')
     setDateOptions([{ date: '', time: '' }])
     setShowEventForm(false)
-    await loadData()
+    setShowVoting(true)
   }
   
   const toggleDateSelection = (dateId: string) => {
