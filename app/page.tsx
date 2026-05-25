@@ -151,6 +151,9 @@ export default function MalakesRoundup() {
     const validDates = calendarDates.filter(d => dateTimes[toYMD(d)])
     if (validDates.length === 0) return
 
+    // Cancel any existing voting proposals so there's never more than one
+    await supabase.from('proposals').update({ status: 'cancelled' }).eq('status', 'voting')
+
     const proposalId = String(Date.now())
     await supabase.from('proposals').insert({
       id: proposalId, organiser_id: currentMember?.id || '1',
