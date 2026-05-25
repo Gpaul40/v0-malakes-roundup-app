@@ -10,6 +10,10 @@ import { Member, Event, Fine, DateOption, EventProposal } from '@/lib/types'
 
 export default function MalakesRoundup() {
   const [showModal, setShowModal] = useState(true)
+  const [loggedInUser, setLoggedInUser] = useState<string | null>(null)
+  const [selectedName, setSelectedName] = useState('')
+  const [password, setPassword] = useState('')
+  const [loginError, setLoginError] = useState('')
   const [membersState] = useState<Member[]>(initialMembers)
   const [eventsState, setEventsState] = useState<Event[]>(events)
   const [finesState, setFinesState] = useState<Fine[]>(fines)
@@ -18,6 +22,28 @@ export default function MalakesRoundup() {
   
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
+  const isAdmin = loggedInUser === 'GABE'
+
+  // Password map — Zeus is Gabe's secret
+  const PASSWORDS: Record<string, string> = {
+    GREG: 'Greg',
+    ZAK: 'Zak',
+    GABE: 'Zeus',
+    KOZZY: 'Kozzy',
+    SAMMY: 'Sammy',
+    KION: 'Kion',
+  }
+
+  const handleLogin = () => {
+    if (!selectedName) { setLoginError('Pick your name'); return }
+    if (PASSWORDS[selectedName] === password) {
+      setLoggedInUser(selectedName)
+      setShowModal(false)
+      setLoginError('')
+    } else {
+      setLoginError('Wrong password, try again')
+    }
+  }
   
   // Event form state
   const [eventTitle, setEventTitle] = useState('')
@@ -203,14 +229,32 @@ export default function MalakesRoundup() {
               {"IT'S"} {currentOrganiser} WEEK
             </h1>
           </div>
-          
-          <p className="text-muted-foreground leading-relaxed">
-            You have <span className="text-primary font-semibold">14 days</span> to organise the Malakes Roundup.
-          </p>
+
+          <div className="space-y-3 text-left">
+            <Select value={selectedName} onValueChange={setSelectedName}>
+              <SelectTrigger className="bg-muted/30 border-border">
+                <SelectValue placeholder="Who are you?" />
+              </SelectTrigger>
+              <SelectContent>
+                {['Gabe', 'Zak', 'Greg', 'Kion', 'Kozzy', 'Sammy'].map((name) => (
+                  <SelectItem key={name} value={name.toUpperCase()}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+              className="bg-muted/30 border-border"
+            />
+            {loginError && <p className="text-red-400 text-xs">{loginError}</p>}
+          </div>
           
           <div className="pt-2">
             <Button 
-              onClick={() => setShowModal(false)}
+              onClick={handleLogin}
               className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-6 text-base glow-gold"
             >
               Acknowledge Responsibility
@@ -243,6 +287,39 @@ export default function MalakesRoundup() {
       </header>
 
       <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
+        {/* Admin Override - only visible to Zeus */}
+        {isAdmin && (
+          <div className="glass-card rounded-xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Settings className="w-4 h-4 text-secondary" />
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">Admin Control</span>
+            </div>
+            <Select 
+              value={overrideOrganiser || ''} 
+              onValueChange={(value) => setOverrideOrganiser(value || null)}
+            >
+              <SelectTrigger className="bg-muted/30 border-border">
+                <SelectValue placeholder="Change Current Organiser" />
+              </SelectTrigger>
+              <SelectContent>
+                {ROTATION_ORDER.map((name) => (
+                  <SelectItem key={name} value={name}>{name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {overrideOrganiser && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setOverrideOrganiser(null)}
+                className="mt-2 text-xs text-muted-foreground"
+              >
+                Reset to automatic rotation
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Current Organiser Card */}
         <div className="glass-card rounded-xl p-5 glow-gold">
           <div className="flex items-center justify-between mb-4">
