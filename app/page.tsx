@@ -195,8 +195,23 @@ export default function MalakesRoundup() {
       proposal_id: currentProposal.id, date_option_id: dateId, member_name: loggedInUser,
     }))
     await supabase.from('votes').insert(newVotes)
+
+    // Optimistically update local state immediately so counts show right away
+    setCurrentProposal(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        dateOptions: prev.dateOptions.map(opt => ({
+          ...opt,
+          availableMembers: selectedDates.includes(opt.id)
+            ? [...opt.availableMembers.filter(m => m !== loggedInUser!), loggedInUser!]
+            : opt.availableMembers.filter(m => m !== loggedInUser),
+        }))
+      }
+    })
     setSelectedDates([])
-    await loadData()
+    // Then sync from DB in background
+    loadData()
   }
   
   const getMajorityDate = () => {
