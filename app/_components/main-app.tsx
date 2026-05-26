@@ -365,19 +365,18 @@ export function MainApp({ currentUser }: MainAppProps) {
 
         {/* Countdown Timer */}
         <div className={`glass-card rounded-xl p-5 transition-all ${timeLeft.days <= 2 ? 'border border-red-500/50 bg-red-500/5' : ''}`}>
-          <div className="flex items-center gap-2 mb-4">
-            {/* Bomb fuse animation */}
-            <span className="relative flex items-center justify-center w-6 h-6">
-              <span className="text-lg leading-none">💣</span>
-              <span className="absolute -top-1 -right-1 flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+          {/* Big bomb at top center */}
+          <div className="flex flex-col items-center mb-3">
+            <span className="relative inline-flex items-center justify-center">
+              <span className="text-6xl leading-none select-none">💣</span>
+              {/* Pulsing fuse spark */}
+              <span className="absolute -top-1 right-3 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-80"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
               </span>
             </span>
-            <div>
-              <p className="text-xs text-muted-foreground uppercase tracking-widest leading-none mb-0.5">Lifeline</p>
-              <p className={`text-sm font-bold uppercase tracking-wider leading-none ${timeLeft.days <= 2 ? 'text-red-400' : 'text-foreground'}`}>Time Remaining</p>
-            </div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest mt-2 leading-none">Lifeline</p>
+            <p className={`text-base font-extrabold uppercase tracking-widest leading-tight ${timeLeft.days <= 2 ? 'text-red-400' : 'text-foreground'}`}>— Time Remaining —</p>
           </div>
           <div className="grid grid-cols-4 gap-2">
             {[
