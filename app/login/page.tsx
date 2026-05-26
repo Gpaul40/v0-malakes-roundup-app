@@ -74,6 +74,21 @@ export default function LoginPage() {
           </div>
         </form>
 
+        <div className="text-left border border-border/40 rounded-xl p-4 bg-muted/10 space-y-2">
+          <p className="text-xs text-muted-foreground uppercase tracking-widest mb-3">How it works</p>
+          {[
+            "Each week one member is on organiser duty — they must plan the event.",
+            "Vote on dates using the availability grid so everyone can attend.",
+            "Once a date is locked, the event is confirmed and the next person is up.",
+            "Miss your week and face the tribunal. No excuses.",
+          ].map((step, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-primary font-bold text-xs mt-0.5 shrink-0">{i + 1}.</span>
+              <p className="text-xs text-muted-foreground/80 leading-snug">{step}</p>
+            </div>
+          ))}
+        </div>
+
         <p className="text-xs text-muted-foreground/60">
           Failure to comply will result in tribunal action
         </p>
