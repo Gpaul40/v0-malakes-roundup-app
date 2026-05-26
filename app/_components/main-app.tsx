@@ -403,15 +403,20 @@ export function MainApp({ currentUser }: MainAppProps) {
         )}
 
         {/* Current Organiser Card */}
-        <div className="glass-card rounded-xl p-5 glow-gold animate-breathe">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Current Organiser</span>
-            {currentMember && (
-              <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(currentMember.status)}`}>
-                {currentMember.status}
-              </span>
-            )}
-          </div>
+        <div className="relative glass-card rounded-xl overflow-hidden animate-breathe" style={{boxShadow: '0 0 20px 4px rgba(212,175,55,0.25)'}}>
+          {/* Background group photo */}
+          <img src="/group.png" alt="" className="absolute inset-0 w-full h-full object-cover object-center" />
+          <div className="absolute inset-0 bg-black/70" />
+          {/* Content */}
+          <div className="relative p-5">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs text-white/70 uppercase tracking-wider">Current Organiser</span>
+              {currentMember && (
+                <span className={`text-xs px-2 py-1 rounded-full border ${getStatusColor(currentMember.status)}`}>
+                  {currentMember.status}
+                </span>
+              )}
+            </div>
           <div className="flex flex-col items-center gap-3">
             {/* Avatar — clickable to upload if it's your own */}
             <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
@@ -432,10 +437,11 @@ export function MainApp({ currentUser }: MainAppProps) {
             </button>
             <div className="text-center">
               <h2 className="text-4xl font-bold text-gold-gradient">{currentOrganiser}</h2>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-white/60">
                 {currentMember?.eventsOrganised || 0} events organised
               </p>
             </div>
+          </div>
           </div>
         </div>
 
