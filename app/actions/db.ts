@@ -92,3 +92,9 @@ export async function payFineAction(fineId: string) {
   await requireSession()
   await supabaseServer.from('fines').update({ paid: true }).eq('id', fineId)
 }
+
+export async function deleteEventAction(eventId: string) {
+  const session = await requireSession()
+  if (session.username !== 'GABE') throw new Error('Admin only')
+  await supabaseServer.from('events').delete().eq('id', eventId)
+}

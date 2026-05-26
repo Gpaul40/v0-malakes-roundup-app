@@ -15,6 +15,7 @@ import {
   toggleAvailabilityAction,
   confirmEventAction,
   payFineAction,
+  deleteEventAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -267,6 +268,11 @@ export function MainApp({ currentUser }: MainAppProps) {
     setFinesState(finesState.map(f => f.id === fineId ? { ...f, paid: true } : f))
   }
 
+  const handleDeleteEvent = async (eventId: string) => {
+    await deleteEventAction(eventId)
+    setEventsState(prev => prev.filter(e => e.id !== eventId))
+  }
+
   // Leaderboard sorted by events organised
   const leaderboard = [...membersState].sort((a, b) => b.eventsOrganised - a.eventsOrganised)
   const outstandingFines = finesState.filter(f => !f.paid)
@@ -467,10 +473,8 @@ export function MainApp({ currentUser }: MainAppProps) {
               {(currentUser === currentProposal.organiserName || isAdmin) && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="border-border text-muted-foreground hover:text-foreground text-xs"
+                  className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 text-xs shrink-0"
                   onClick={() => {
-                    // Pre-fill the form with existing proposal data
                     setEventTitle(currentProposal.title)
                     setEventLocation(currentProposal.location)
                     const dates = currentProposal.dateOptions.map(d => new Date(d.date + 'T00:00:00'))
@@ -738,7 +742,7 @@ export function MainApp({ currentUser }: MainAppProps) {
                   </span>
                 </div>
                 <span className="text-sm text-muted-foreground">
-                  {member.eventsOrganised} events
+                  {member.eventsOrganised} events held
                 </span>
               </div>
             ))}
@@ -753,16 +757,27 @@ export function MainApp({ currentUser }: MainAppProps) {
           </div>
 
           <div className="space-y-3">
-            {eventsState.slice(0, 3).map((event) => (
+            {eventsState.slice(0, 5).map((event) => (
               <div key={event.id} className="p-3 bg-muted/30 rounded-lg">
                 <div className="flex items-start justify-between mb-1">
                   <h4 className="font-medium text-sm">{event.title}</h4>
-                  {event.rating > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Star className="w-3 h-3 text-primary fill-primary" />
-                      <span className="text-xs text-primary">{event.rating}</span>
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    {event.rating > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Star className="w-3 h-3 text-primary fill-primary" />
+                        <span className="text-xs text-primary">{event.rating}</span>
+                      </div>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleDeleteEvent(event.id)}
+                        className="text-muted-foreground/40 hover:text-red-400 transition-colors"
+                        title="Delete event"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground mb-1">
                   by {event.organiserName} - {new Date(event.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
