@@ -109,12 +109,12 @@ export async function uploadAvatarAction(formData: FormData): Promise<{ url: str
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error: upErr } = await supabaseServer.storage
-    .from('avatars')
+    .from('Photos')
     .upload(path, buffer, { contentType: file.type, upsert: true })
 
   if (upErr) return { error: upErr.message }
 
-  const { data: { publicUrl } } = supabaseServer.storage.from('avatars').getPublicUrl(path)
+  const { data: { publicUrl } } = supabaseServer.storage.from('Photos').getPublicUrl(path)
 
   await supabaseServer.from('member_profiles').upsert({ name: session.username, avatar_url: publicUrl })
 
