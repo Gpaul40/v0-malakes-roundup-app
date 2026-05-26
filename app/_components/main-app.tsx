@@ -18,6 +18,7 @@ import {
   payFineAction,
   deleteEventAction,
   uploadAvatarAction,
+  uploadAppImageAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -36,6 +37,9 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [avatars, setAvatars] = useState<Record<string, string>>({})
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
+  const [rouletteBanner, setRouletteBanner] = useState<string | null>(null)
+  const [uploadingBanner, setUploadingBanner] = useState(false)
+  const bannerInputRef = useRef<HTMLInputElement>(null)
 
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
@@ -66,6 +70,22 @@ export function MainApp({ currentUser }: MainAppProps) {
     }
     setUploadingAvatar(false)
     // reset input so same file can be re-selected
+    e.target.value = ''
+  }
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingBanner(true)
+    const fd = new FormData()
+    fd.append('file', file)
+    const result = await uploadAppImageAction('roulette', fd)
+    if ('error' in result) {
+      alert('Upload failed: ' + result.error)
+    } else {
+      setRouletteBanner(result.url)
+    }
+    setUploadingBanner(false)
     e.target.value = ''
   }
 
@@ -132,7 +152,10 @@ export function MainApp({ currentUser }: MainAppProps) {
     }
     if (profilesRes.data) {
       const map: Record<string, string> = {}
-      for (const p of profilesRes.data as any[]) if (p.avatar_url) map[p.name] = p.avatar_url
+      for (const p of profilesRes.data as any[]) {
+        if (p.name === '__app_roulette__') { setRouletteBanner(p.avatar_url); continue }
+        if (p.avatar_url) map[p.name] = p.avatar_url
+      }
       setAvatars(map)
     }
     setLoading(false)
@@ -810,13 +833,24 @@ export function MainApp({ currentUser }: MainAppProps) {
         {/* Roulette Rule Card */}
         <div className="glass-card rounded-xl overflow-hidden">
           {/* Roulette table image */}
-          <div className="relative h-36 w-full overflow-hidden">
-            <img
-              src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Roulette-wheel-and-table.jpg/1200px-Roulette-wheel-and-table.jpg"
-              alt="Roulette table"
-              className="w-full h-full object-cover object-center"
-            />
+          <div className="relative h-36 w-full overflow-hidden bg-muted/20">
+            {rouletteBanner
+              ? <img src={rouletteBanner} alt="Roulette table" className="w-full h-full object-cover object-center" />
+              : <div className="w-full h-full flex items-center justify-center text-muted-foreground/30 text-4xl">🎰</div>
+            }
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+            {/* Admin upload button */}
+            {isAdmin && (
+              <>
+                <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={handleBannerUpload} />
+                <button
+                  onClick={() => bannerInputRef.current?.click()}
+                  className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white text-xs px-2 py-1 rounded-lg border border-white/20"
+                >
+                  {uploadingBanner ? '⏳' : '📷 Upload'}
+                </button>
+              </>
+            )}
             <div className="absolute bottom-3 left-4 flex items-center gap-2">
               <span className="text-2xl">🎰</span>
               <span className="text-base font-bold text-white tracking-wide uppercase">The Fine Fund</span>
