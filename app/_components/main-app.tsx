@@ -807,6 +807,40 @@ export function MainApp({ currentUser }: MainAppProps) {
           )}
         </div>
 
+        {/* Roulette Rule Card */}
+        <div className="glass-card rounded-xl overflow-hidden">
+          {/* Roulette table image */}
+          <div className="relative h-36 w-full overflow-hidden">
+            <img
+              src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5c/Roulette-wheel-and-table.jpg/1200px-Roulette-wheel-and-table.jpg"
+              alt="Roulette table"
+              className="w-full h-full object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+            <div className="absolute bottom-3 left-4 flex items-center gap-2">
+              <span className="text-2xl">🎰</span>
+              <span className="text-base font-bold text-white tracking-wide uppercase">The Fine Fund</span>
+            </div>
+          </div>
+          {/* Rule breakdown */}
+          <div className="p-4 space-y-3">
+            <div className="flex items-start gap-3">
+              <span className="text-amber-400 font-bold text-lg leading-none mt-0.5">$200</span>
+              <p className="text-sm text-muted-foreground leading-snug">Fine issued to the organiser for every failed or cancelled event.</p>
+            </div>
+            <div className="h-px bg-border/50" />
+            <div className="flex items-start gap-3">
+              <span className="text-red-500 text-lg leading-none mt-0.5">🎡</span>
+              <p className="text-sm text-muted-foreground leading-snug">The full $200 goes on <span className="text-white font-medium">Roulette at the Casino</span>. One spin. No exceptions.</p>
+            </div>
+            <div className="h-px bg-border/50" />
+            <div className="flex items-start gap-3">
+              <span className="text-emerald-400 text-lg leading-none mt-0.5">💸</span>
+              <p className="text-sm text-muted-foreground leading-snug">Winnings are split <span className="text-white font-medium">equally among all members</span> — excluding the organiser who failed.</p>
+            </div>
+          </div>
+        </div>
+
         {/* Leaderboard */}
         <div className="glass-card rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
