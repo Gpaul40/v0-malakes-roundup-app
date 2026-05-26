@@ -32,6 +32,9 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [showEventComplete, setShowEventComplete] = useState(false)
   const [confirmedEvent, setConfirmedEvent] = useState<{ title: string; location: string; date: string; time: string; attendees: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [avatars, setAvatars] = useState<Record<string, string>>({})
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
@@ -47,13 +50,28 @@ export function MainApp({ currentUser }: MainAppProps) {
     return () => clearTimeout(t)
   }, [showEventComplete])
 
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingAvatar(true)
+    const ext = file.name.split('.').pop()
+    const path = `${currentUser.toLowerCase()}-${Date.now()}.${ext}`
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    if (upErr) { console.error(upErr); setUploadingAvatar(false); return }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('member_profiles').upsert({ name: currentUser, avatar_url: publicUrl })
+    setAvatars(prev => ({ ...prev, [currentUser]: publicUrl }))
+    setUploadingAvatar(false)
+  }
+
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [eventsRes, finesRes, proposalsRes] = await Promise.all([
+    const [eventsRes, finesRes, proposalsRes, profilesRes] = await Promise.all([
       supabase.from('events').select('*').order('created_at', { ascending: false }),
       supabase.from('fines').select('*').order('created_at', { ascending: false }),
       // Fetch proposals + date_options separately from votes to avoid needing an FK constraint
       supabase.from('proposals').select('*, date_options(*)').eq('status', 'voting').order('created_at', { ascending: false }).limit(1),
+      supabase.from('member_profiles').select('name, avatar_url'),
     ])
 
     if (eventsRes.error) console.error('events error:', eventsRes.error)
@@ -106,6 +124,11 @@ export function MainApp({ currentUser }: MainAppProps) {
     } else {
       setShowVoting(false)
       setCurrentProposal(null)
+    }
+    if (profilesRes.data) {
+      const map: Record<string, string> = {}
+      for (const p of profilesRes.data as any[]) if (p.avatar_url) map[p.name] = p.avatar_url
+      setAvatars(map)
     }
     setLoading(false)
   }, [])
@@ -362,9 +385,23 @@ export function MainApp({ currentUser }: MainAppProps) {
             )}
           </div>
           <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-bold text-primary border-2 border-primary/50">
-              {currentOrganiser[0]}
-            </div>
+            {/* Avatar — clickable to upload if it's your own */}
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarUpload} />
+            <button
+              onClick={() => currentUser === currentOrganiser && avatarInputRef.current?.click()}
+              className={`relative w-20 h-20 rounded-full overflow-hidden border-2 border-primary/50 bg-primary/20 flex items-center justify-center ${currentUser === currentOrganiser ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+              title={currentUser === currentOrganiser ? 'Tap to change photo' : undefined}
+            >
+              {avatars[currentOrganiser]
+                ? <img src={avatars[currentOrganiser]} alt={currentOrganiser} className="w-full h-full object-cover" />
+                : <span className="text-2xl font-bold text-primary">{currentOrganiser[0]}</span>
+              }
+              {currentUser === currentOrganiser && (
+                <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white text-center py-0.5">
+                  {uploadingAvatar ? '...' : '📷'}
+                </span>
+              )}
+            </button>
             <div className="text-center">
               <h2 className="text-4xl font-bold text-gold-gradient">{currentOrganiser}</h2>
               <p className="text-sm text-muted-foreground">
