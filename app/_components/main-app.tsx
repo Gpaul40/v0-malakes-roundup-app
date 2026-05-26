@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Crown, Clock, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut } from 'lucide-react'
+import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -366,8 +366,18 @@ export function MainApp({ currentUser }: MainAppProps) {
         {/* Countdown Timer */}
         <div className={`glass-card rounded-xl p-5 transition-all ${timeLeft.days <= 2 ? 'border border-red-500/50 bg-red-500/5' : ''}`}>
           <div className="flex items-center gap-2 mb-4">
-            <Clock className={`w-4 h-4 ${timeLeft.days <= 2 ? 'text-red-400' : 'text-secondary'}`} />
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Time Remaining</span>
+            {/* Bomb fuse animation */}
+            <span className="relative flex items-center justify-center w-6 h-6">
+              <span className="text-lg leading-none">💣</span>
+              <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+              </span>
+            </span>
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-widest leading-none mb-0.5">Lifeline</p>
+              <p className={`text-sm font-bold uppercase tracking-wider leading-none ${timeLeft.days <= 2 ? 'text-red-400' : 'text-foreground'}`}>Time Remaining</p>
+            </div>
           </div>
           <div className="grid grid-cols-4 gap-2">
             {[
