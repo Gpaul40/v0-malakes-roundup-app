@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,7 @@ import { members as initialMembers, getCurrentCycleInfo, getStatusColor, ROTATIO
 import { Member, Event, Fine, EventProposal } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 import { logoutAction } from '@/app/actions/auth'
+import confetti from 'canvas-confetti'
 import {
   submitEventProposalAction,
   toggleAvailabilityAction,
@@ -35,6 +36,16 @@ export function MainApp({ currentUser }: MainAppProps) {
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
   const isAdmin = currentUser === 'GABE'
+  const [rippleCell, setRippleCell] = useState<string | null>(null)
+
+  // Confetti burst when celebration modal opens
+  useEffect(() => {
+    if (!showEventComplete) return
+    const burst = () => confetti({ particleCount: 120, spread: 80, origin: { y: 0.4 }, colors: ['#d4af37', '#fff', '#ff4444', '#22c55e'] })
+    burst()
+    const t = setTimeout(burst, 400)
+    return () => clearTimeout(t)
+  }, [showEventComplete])
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -341,7 +352,7 @@ export function MainApp({ currentUser }: MainAppProps) {
         )}
 
         {/* Current Organiser Card */}
-        <div className="glass-card rounded-xl p-5 glow-gold">
+        <div className="glass-card rounded-xl p-5 glow-gold animate-breathe">
           <div className="flex items-center justify-between mb-4">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Current Organiser</span>
             {currentMember && (
@@ -364,11 +375,11 @@ export function MainApp({ currentUser }: MainAppProps) {
         </div>
 
         {/* Countdown Timer */}
-        <div className={`glass-card rounded-xl p-5 transition-all ${timeLeft.days <= 2 ? 'border border-red-500/50 bg-red-500/5' : ''}`}>
+        <div className={`glass-card rounded-xl p-5 border transition-all ${timeLeft.days <= 2 ? 'animate-heartbeat bg-red-500/5' : 'border-transparent'}`}>
           {/* Big bomb at top center */}
           <div className="flex flex-col items-center mb-3">
             <span className="relative inline-flex items-center justify-center">
-              <span className="text-6xl leading-none select-none">💣</span>
+              <span className={`text-6xl leading-none select-none ${timeLeft.days <= 2 ? 'animate-bomb-shake' : ''}`}>💣</span>
               {/* Pulsing fuse spark */}
               <span className="absolute -top-1 right-3 flex h-3 w-3">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-80"></span>
@@ -385,8 +396,8 @@ export function MainApp({ currentUser }: MainAppProps) {
               { value: timeLeft.minutes, label: 'Min' },
               { value: timeLeft.seconds, label: 'Sec' },
             ].map((item) => (
-              <div key={item.label} className={`rounded-lg p-3 text-center ${timeLeft.days <= 2 ? 'bg-red-500/15' : 'bg-muted/30'}`}>
-                <p className={`text-2xl font-bold ${timeLeft.days <= 2 ? 'text-red-400' : 'text-secondary'}`}>{String(item.value).padStart(2, '0')}</p>
+              <div key={item.label} className={`rounded-lg p-3 text-center overflow-hidden ${timeLeft.days <= 2 ? 'bg-red-500/15' : 'bg-muted/30'}`}>
+                <p key={item.value} className={`text-2xl font-bold animate-flip-digit ${timeLeft.days <= 2 ? 'text-red-400' : 'text-secondary'}`}>{String(item.value).padStart(2, '0')}</p>
                 <p className="text-xs text-muted-foreground">{item.label}</p>
               </div>
             ))}
@@ -561,8 +572,14 @@ export function MainApp({ currentUser }: MainAppProps) {
                           return (
                             <td key={name} className="p-1 text-center">
                               <button
-                                onClick={() => isMe && handleToggleAvailability(opt.id, isAvailable)}
-                                className={`w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition-all text-xs font-bold
+                                onClick={() => {
+                                  if (!isMe) return
+                                  const key = `${opt.id}-${name}`
+                                  setRippleCell(key)
+                                  setTimeout(() => setRippleCell(null), 400)
+                                  handleToggleAvailability(opt.id, isAvailable)
+                                }}
+                                className={`relative overflow-hidden w-8 h-8 rounded-lg flex items-center justify-center mx-auto transition-all text-xs font-bold
                                   ${isAvailable
                                     ? isMe ? 'bg-primary text-primary-foreground shadow-md' : 'bg-emerald-500/25 text-emerald-400'
                                     : isMe ? 'bg-muted/40 border border-dashed border-border hover:border-primary text-muted-foreground/40' : 'bg-muted/10 text-muted-foreground/20'
@@ -570,6 +587,9 @@ export function MainApp({ currentUser }: MainAppProps) {
                                 title={isMe ? (isAvailable ? 'Click to remove' : 'Click to mark available') : name}
                               >
                                 {isAvailable ? <Check className="w-3.5 h-3.5" /> : isMe ? '+' : ''}
+                                {rippleCell === `${opt.id}-${name}` && (
+                                  <span className="absolute inset-0 rounded-lg" style={{ animation: 'cell-ripple 0.4s ease-out both', background: 'rgba(255,255,255,0.35)', borderRadius: '50%', transform: 'scale(0)' }} />
+                                )}
                               </button>
                             </td>
                           )

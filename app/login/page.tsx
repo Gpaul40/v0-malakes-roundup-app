@@ -26,7 +26,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="glass-card rounded-2xl p-8 max-w-sm w-full text-center space-y-6 animate-fade-in">
+      <div className="glass-card rounded-2xl p-8 max-w-sm w-full text-center space-y-6 animate-slide-up">
         <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center glow-gold">
           <Crown className="w-10 h-10 text-primary" />
         </div>
