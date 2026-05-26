@@ -361,12 +361,12 @@ export function MainApp({ currentUser }: MainAppProps) {
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center gap-3">
             <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center text-2xl font-bold text-primary border-2 border-primary/50">
               {currentOrganiser[0]}
             </div>
-            <div>
-              <h2 className="text-2xl font-bold text-gold-gradient">{currentOrganiser}</h2>
+            <div className="text-center">
+              <h2 className="text-4xl font-bold text-gold-gradient">{currentOrganiser}</h2>
               <p className="text-sm text-muted-foreground">
                 {currentMember?.eventsOrganised || 0} events organised
               </p>
