@@ -98,3 +98,25 @@ export async function deleteEventAction(eventId: string) {
   if (session.username !== 'GABE') throw new Error('Admin only')
   await supabaseServer.from('events').delete().eq('id', eventId)
 }
+
+export async function uploadAvatarAction(formData: FormData): Promise<{ url: string } | { error: string }> {
+  const session = await requireSession()
+  const file = formData.get('file') as File | null
+  if (!file) return { error: 'No file provided' }
+
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `${session.username.toLowerCase()}-${Date.now()}.${ext}`
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  const { error: upErr } = await supabaseServer.storage
+    .from('avatars')
+    .upload(path, buffer, { contentType: file.type, upsert: true })
+
+  if (upErr) return { error: upErr.message }
+
+  const { data: { publicUrl } } = supabaseServer.storage.from('avatars').getPublicUrl(path)
+
+  await supabaseServer.from('member_profiles').upsert({ name: session.username, avatar_url: publicUrl })
+
+  return { url: publicUrl }
+}

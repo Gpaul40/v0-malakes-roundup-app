@@ -17,6 +17,7 @@ import {
   confirmEventAction,
   payFineAction,
   deleteEventAction,
+  uploadAvatarAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -54,14 +55,18 @@ export function MainApp({ currentUser }: MainAppProps) {
     const file = e.target.files?.[0]
     if (!file) return
     setUploadingAvatar(true)
-    const ext = file.name.split('.').pop()
-    const path = `${currentUser.toLowerCase()}-${Date.now()}.${ext}`
-    const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, { upsert: true })
-    if (upErr) { console.error(upErr); setUploadingAvatar(false); return }
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('member_profiles').upsert({ name: currentUser, avatar_url: publicUrl })
-    setAvatars(prev => ({ ...prev, [currentUser]: publicUrl }))
+    const fd = new FormData()
+    fd.append('file', file)
+    const result = await uploadAvatarAction(fd)
+    if ('error' in result) {
+      console.error('Avatar upload failed:', result.error)
+      alert('Upload failed: ' + result.error)
+    } else {
+      setAvatars(prev => ({ ...prev, [currentUser]: result.url }))
+    }
     setUploadingAvatar(false)
+    // reset input so same file can be re-selected
+    e.target.value = ''
   }
 
   const loadData = useCallback(async () => {
