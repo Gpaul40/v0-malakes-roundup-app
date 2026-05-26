@@ -833,10 +833,10 @@ export function MainApp({ currentUser }: MainAppProps) {
         {/* Roulette Rule Card */}
         <div className="glass-card rounded-xl overflow-hidden">
           {/* Roulette table image */}
-          <div className="relative h-36 w-full overflow-hidden bg-muted/20">
+          <div className="relative h-52 w-full overflow-hidden bg-muted/20">
             {rouletteBanner
               ? <img src={rouletteBanner} alt="Roulette table" className="w-full h-full object-cover object-center" />
-              : <div className="w-full h-full flex items-center justify-center text-muted-foreground/30 text-4xl">🎰</div>
+              : <img src="/roulette.png" alt="Roulette table" className="w-full h-full object-cover object-center" />
             }
             <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
             {/* Admin upload button */}
