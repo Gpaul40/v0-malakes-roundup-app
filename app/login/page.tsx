@@ -1,0 +1,83 @@
+'use client'
+
+import { useActionState, useState } from 'react'
+import { Crown } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { loginAction } from '@/app/actions/auth'
+import { getCurrentCycleInfo } from '@/lib/data'
+import { ROTATION_ORDER } from '@/lib/data'
+
+const cycleInfo = getCurrentCycleInfo()
+const currentOrganiser = ROTATION_ORDER[cycleInfo.currentOrganiserIndex]
+
+const MEMBER_NAMES = ['Gabe', 'Zak', 'Greg', 'Kion', 'Kozzy', 'Sammy']
+
+export default function LoginPage() {
+  const [selectedName, setSelectedName] = useState('')
+  const [state, formAction, isPending] = useActionState(
+    async (_prev: { error: string } | null, formData: FormData) => {
+      formData.set('name', selectedName)
+      return loginAction(formData)
+    },
+    null,
+  )
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="glass-card rounded-2xl p-8 max-w-sm w-full text-center space-y-6 animate-fade-in">
+        <div className="w-20 h-20 mx-auto rounded-full bg-primary/20 flex items-center justify-center glow-gold">
+          <Crown className="w-10 h-10 text-primary" />
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-muted-foreground text-sm uppercase tracking-widest">Attention</p>
+          <h1 className="text-3xl font-bold text-gold-gradient">
+            {"IT'S"} {currentOrganiser} WEEK
+          </h1>
+        </div>
+
+        <form action={formAction} className="space-y-3 text-left">
+          <Select value={selectedName} onValueChange={setSelectedName} name="name">
+            <SelectTrigger className="bg-muted/30 border-border">
+              <SelectValue placeholder="Who are you?" />
+            </SelectTrigger>
+            <SelectContent>
+              {MEMBER_NAMES.map((name) => (
+                <SelectItem key={name} value={name.toUpperCase()}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Input
+            type="password"
+            name="password"
+            placeholder="Password"
+            className="bg-muted/30 border-border"
+          />
+
+          <p className="text-xs text-muted-foreground/60">Password is your name</p>
+
+          {state?.error && <p className="text-red-400 text-xs">{state.error}</p>}
+
+          <div className="pt-2">
+            <Button
+              type="submit"
+              disabled={isPending || !selectedName}
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-6 text-base glow-gold"
+            >
+              {isPending ? 'Checking...' : 'Acknowledge Responsibility'}
+            </Button>
+          </div>
+        </form>
+
+        <p className="text-xs text-muted-foreground/60">
+          Failure to comply will result in tribunal action
+        </p>
+      </div>
+    </div>
+  )
+}
