@@ -364,9 +364,9 @@ export function MainApp({ currentUser }: MainAppProps) {
         </div>
 
         {/* Countdown Timer */}
-        <div className="glass-card rounded-xl p-5">
+        <div className={`glass-card rounded-xl p-5 transition-all ${timeLeft.days <= 2 ? 'border border-red-500/50 bg-red-500/5' : ''}`}>
           <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-4 h-4 text-secondary" />
+            <Clock className={`w-4 h-4 ${timeLeft.days <= 2 ? 'text-red-400' : 'text-secondary'}`} />
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Time Remaining</span>
           </div>
           <div className="grid grid-cols-4 gap-2">
@@ -376,17 +376,40 @@ export function MainApp({ currentUser }: MainAppProps) {
               { value: timeLeft.minutes, label: 'Min' },
               { value: timeLeft.seconds, label: 'Sec' },
             ].map((item) => (
-              <div key={item.label} className="bg-muted/30 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-secondary">{String(item.value).padStart(2, '0')}</p>
+              <div key={item.label} className={`rounded-lg p-3 text-center ${timeLeft.days <= 2 ? 'bg-red-500/15' : 'bg-muted/30'}`}>
+                <p className={`text-2xl font-bold ${timeLeft.days <= 2 ? 'text-red-400' : 'text-secondary'}`}>{String(item.value).padStart(2, '0')}</p>
                 <p className="text-xs text-muted-foreground">{item.label}</p>
               </div>
             ))}
           </div>
-          {timeLeft.days <= 3 && timeLeft.days > 0 && (
-            <p className="text-xs text-amber-400 mt-3 text-center">
-              Time is running out. The tribunal is watching.
-            </p>
-          )}
+          {!showVoting && (() => {
+            if (timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes === 0 && timeLeft.seconds === 0) return null
+            if (timeLeft.days <= 1) return (
+              <p className="text-xs text-red-400 font-bold mt-3 text-center animate-pulse">
+                🚨 FINAL WARNING. {currentOrganiser}, you have hours left. Failure means tribunal. No excuses.
+              </p>
+            )
+            if (timeLeft.days <= 3) return (
+              <p className="text-xs text-red-400 mt-3 text-center">
+                ⚠️ The council grows impatient. {currentOrganiser} has {timeLeft.days} days before consequences are enforced.
+              </p>
+            )
+            if (timeLeft.days <= 5) return (
+              <p className="text-xs text-amber-400 mt-3 text-center">
+                👁️ The tribunal is watching, {currentOrganiser}. Don&apos;t make them act.
+              </p>
+            )
+            if (timeLeft.days <= 7) return (
+              <p className="text-xs text-amber-400/70 mt-3 text-center">
+                🕰️ Time is ticking, {currentOrganiser}. Sort the event or face the fine.
+              </p>
+            )
+            return (
+              <p className="text-xs text-muted-foreground/60 mt-3 text-center">
+                {currentOrganiser} has {timeLeft.days} days to organise. Don&apos;t squander it.
+              </p>
+            )
+          })()}
         </div>
 
         {/* Next Organiser */}
