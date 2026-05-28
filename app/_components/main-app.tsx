@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut } from 'lucide-react'
+import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut, Images, Upload } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ import {
   deleteEventAction,
   uploadAvatarAction,
   uploadAppImageAction,
+  uploadEventGalleryAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -40,6 +41,15 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [rouletteBanner, setRouletteBanner] = useState<string | null>(null)
   const [uploadingBanner, setUploadingBanner] = useState(false)
   const bannerInputRef = useRef<HTMLInputElement>(null)
+
+  // Gallery state
+  const [galleryEventId, setGalleryEventId] = useState<string | null>(null)
+  const [galleryEventTitle, setGalleryEventTitle] = useState<string>('')
+  const [galleryImages, setGalleryImages] = useState<string[]>([])
+  const [galleryLoading, setGalleryLoading] = useState(false)
+  const [galleryUploading, setGalleryUploading] = useState(false)
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
 
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
@@ -89,8 +99,50 @@ export function MainApp({ currentUser }: MainAppProps) {
     e.target.value = ''
   }
 
+  const loadEventGallery = async (eventId: string) => {
+    setGalleryLoading(true)
+    const { data, error } = await supabase.storage
+      .from('Photos')
+      .list('', { search: `gallery-${eventId}-` })
+    if (!error && data) {
+      const urls = data
+        .filter(f => f.name.startsWith(`gallery-${eventId}-`))
+        .map(f => supabase.storage.from('Photos').getPublicUrl(f.name).data.publicUrl)
+      setGalleryImages(urls)
+    }
+    setGalleryLoading(false)
+  }
+
+  const openGallery = (event: { id: string; title: string }) => {
+    setGalleryEventId(event.id)
+    setGalleryEventTitle(event.title)
+    setGalleryImages([])
+    loadEventGallery(event.id)
+  }
+
+  const closeGallery = () => {
+    setGalleryEventId(null)
+    setGalleryImages([])
+    setLightboxImg(null)
+  }
+
+  const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length || !galleryEventId) return
+    setGalleryUploading(true)
+    for (const file of files) {
+      const fd = new FormData()
+      fd.append('file', file)
+      const result = await uploadEventGalleryAction(galleryEventId, fd)
+      if ('url' in result) {
+        setGalleryImages(prev => [...prev, result.url])
+      }
+    }
+    setGalleryUploading(false)
+    e.target.value = ''
+  }
+
   const loadData = useCallback(async () => {
-    setLoading(true)
     const [eventsRes, finesRes, proposalsRes, profilesRes] = await Promise.all([
       supabase.from('events').select('*').order('created_at', { ascending: false }),
       supabase.from('fines').select('*').order('created_at', { ascending: false }),
@@ -977,9 +1029,26 @@ export function MainApp({ currentUser }: MainAppProps) {
                 <p className="text-xs text-muted-foreground mb-1">
                   by {event.organiserName} - {new Date(event.date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })}
                 </p>
-                <p className="text-xs text-muted-foreground/80 line-clamp-2">
+                <p className="text-xs text-muted-foreground/80 line-clamp-2 mb-2">
                   {event.description}
                 </p>
+                {/* Gallery buttons */}
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => openGallery(event)}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                  >
+                    <Images className="w-3 h-3" />
+                    View Gallery
+                  </button>
+                  <button
+                    onClick={() => { setGalleryEventId(event.id); setGalleryEventTitle(event.title); setTimeout(() => galleryInputRef.current?.click(), 50) }}
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <Upload className="w-3 h-3" />
+                    Upload
+                  </button>
+                </div>
               </div>
             ))}
             {eventsState.length === 0 && !loading && (
@@ -988,6 +1057,85 @@ export function MainApp({ currentUser }: MainAppProps) {
           </div>
         </div>
       </main>
+
+      {/* Hidden gallery file input */}
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={handleGalleryUpload}
+      />
+
+      {/* Gallery Modal */}
+      {galleryEventId && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black/95 animate-slide-up">
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
+            <div>
+              <p className="text-xs text-muted-foreground uppercase tracking-wider">Gallery</p>
+              <h3 className="font-bold text-foreground truncate max-w-[240px]">{galleryEventTitle}</h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => galleryInputRef.current?.click()}
+                disabled={galleryUploading}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {galleryUploading ? 'Uploading…' : 'Add Photos'}
+              </button>
+              <button onClick={closeGallery} className="p-2 text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Grid */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {galleryLoading ? (
+              <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">Loading…</div>
+            ) : galleryImages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
+                <Images className="w-10 h-10 opacity-30" />
+                <p className="text-sm">No photos yet. Be the first to upload!</p>
+                <button
+                  onClick={() => galleryInputRef.current?.click()}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
+                >
+                  Upload Photos
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-1.5">
+                {galleryImages.map((url, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setLightboxImg(url)}
+                    className="aspect-square overflow-hidden rounded-lg bg-muted/30 hover:opacity-90 transition-opacity"
+                  >
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxImg && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95"
+          onClick={() => setLightboxImg(null)}
+        >
+          <img src={lightboxImg} alt="" className="max-w-full max-h-full object-contain p-4" />
+          <button className="absolute top-4 right-4 text-white/70 hover:text-white">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

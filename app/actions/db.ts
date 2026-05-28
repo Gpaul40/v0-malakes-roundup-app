@@ -122,6 +122,25 @@ export async function uploadAppImageAction(key: string, formData: FormData): Pro
   return { url: publicUrl }
 }
 
+export async function uploadEventGalleryAction(eventId: string, formData: FormData): Promise<{ url: string } | { error: string }> {
+  await requireSession()
+  const file = formData.get('file') as File | null
+  if (!file) return { error: 'No file provided' }
+
+  const ext = file.name.split('.').pop() ?? 'jpg'
+  const path = `gallery-${eventId}-${Date.now()}.${ext}`
+  const buffer = Buffer.from(await file.arrayBuffer())
+
+  const { error: upErr } = await supabaseServer.storage
+    .from('Photos')
+    .upload(path, buffer, { contentType: file.type, upsert: false })
+
+  if (upErr) return { error: upErr.message }
+
+  const { data: { publicUrl } } = supabaseServer.storage.from('Photos').getPublicUrl(path)
+  return { url: publicUrl }
+}
+
 export async function uploadAvatarAction(formData: FormData): Promise<{ url: string } | { error: string }> {
   const session = await requireSession()
   const file = formData.get('file') as File | null
