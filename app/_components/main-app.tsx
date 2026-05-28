@@ -6,7 +6,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { members as initialMembers, getCurrentCycleInfo, getStatusColor, ROTATION_ORDER } from '@/lib/data'
+import { members as initialMembers, getCurrentCycleInfo, getStatusColor, ROTATION_ORDER, getMalakaRank } from '@/lib/data'
 import { Member, Event, Fine, EventProposal } from '@/lib/types'
 import { supabase } from '@/lib/supabase'
 import { logoutAction } from '@/app/actions/auth'
@@ -341,6 +341,15 @@ export function MainApp({ currentUser }: MainAppProps) {
   const totalOutstanding = outstandingFines.reduce((sum, f) => sum + f.amount, 0)
   const majorityDateId = getMajorityDate()
 
+  // Rank computation: use live events/fines data keyed by member name
+  const memberRankMap = membersState.reduce((acc, m) => {
+    const evCount = eventsState.filter(e => e.organiserName === m.name).length
+    const fCount = finesState.filter(f => f.memberName === m.name).length
+    acc[m.name] = getMalakaRank(evCount, fCount, m.name)
+    return acc
+  }, {} as Record<string, ReturnType<typeof getMalakaRank>>)
+  const organiserRank = memberRankMap[currentOrganiser]
+
   return (
     <div className="min-h-screen bg-background pb-8">
       {/* Header */}
@@ -440,6 +449,14 @@ export function MainApp({ currentUser }: MainAppProps) {
               <p className="text-sm text-white/60">
                 {currentMember?.eventsOrganised || 0} events organised
               </p>
+              {organiserRank && (
+                <p
+                  className={`text-xs font-bold mt-1 uppercase tracking-wide animate-rank-glow ${organiserRank.color}`}
+                  style={{ textShadow: organiserRank.glowStyle }}
+                >
+                  Current Rank: {organiserRank.name}
+                </p>
+              )}
             </div>
           </div>
           </div>
@@ -905,9 +922,19 @@ export function MainApp({ currentUser }: MainAppProps) {
                   }`}>
                     {index + 1}
                   </span>
-                  <span className={`font-medium ${index === 0 ? 'text-primary' : ''}`}>
-                    {member.name}
-                  </span>
+                  <div>
+                    <span className={`font-medium ${index === 0 ? 'text-primary' : ''}`}>
+                      {member.name}
+                    </span>
+                    {memberRankMap[member.name] && (
+                      <p
+                        className={`text-[10px] font-semibold leading-tight animate-rank-glow ${memberRankMap[member.name].color}`}
+                        style={{ textShadow: memberRankMap[member.name].glowStyle }}
+                      >
+                        {memberRankMap[member.name].name}
+                      </p>
+                    )}
+                  </div>
                 </div>
                 <span className="text-sm text-muted-foreground">
                   {member.eventsOrganised} events held

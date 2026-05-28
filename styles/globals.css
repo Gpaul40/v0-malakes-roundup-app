@@ -165,3 +165,9 @@
 .animate-flip-digit  { animation: flip-digit 0.2s ease-out both; perspective: 400px; }
 .animate-heartbeat   { animation: heartbeat-glow 1.4s ease-in-out infinite; }
 .animate-breathe     { animation: breathe-glow 3s ease-in-out infinite; }
+.animate-rank-glow   { animation: rank-glow-pulse 2s ease-in-out infinite; }
+
+@keyframes rank-glow-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.65; }
+}

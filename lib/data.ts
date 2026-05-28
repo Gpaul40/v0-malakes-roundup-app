@@ -156,3 +156,77 @@ export function getStatusIcon(status: MemberStatus): string {
       return '•'
   }
 }
+
+// ── Malaka Rank System ──────────────────────────────────────────────────────
+
+export type MalakaRankTier = 'top' | 'good' | 'suspicious' | 'bad' | 'shame'
+
+export interface MalakaRank {
+  name: string
+  tier: MalakaRankTier
+  color: string
+  glowStyle: string
+}
+
+const TOP_TIER_RANKS    = ['MALAKA PRIME', 'ARCHMALAKA', 'MALAKIUS MAXIMUS', 'OMEGA MALAKA', 'GRAND MALAKA']
+const GOOD_RANKS        = ['Certified Malaka', 'Active Malaka', 'Supreme Malak', 'Alpha Malak', 'Gold Malaka']
+const SUSPICIOUS_RANKS  = ['Malak Under Review', 'Semi-Malaka', 'Malaklite', 'Malak-ish Behaviour', 'Beta Malak']
+const BAD_RANKS         = ['Dog Malaka', 'Malakruptcy', 'Malakdown', 'Malakastrophe', 'Malakageddon', 'Public Malakace', 'Malakalypse']
+const SHAME_RANKS       = ["Malakan't", 'MissingMalaka', 'Malafraudius', 'BrokeMalak', 'Malakaflop', 'WeakMalak Syndrome']
+
+function nameHash(name: string): number {
+  return name.split('').reduce((acc, c) => ((acc * 31) + c.charCodeAt(0)) & 0xffff, 0)
+}
+
+/**
+ * Returns the Malaka rank for a member based on their events organised and fines.
+ * Score = eventsOrganised * 10 - fines * 5
+ *   ≥ 30  → TOP TIER
+ *   ≥  0  → GOOD STATUS  (starting tier)
+ *   ≥ -15 → SUSPICIOUS
+ *   ≥ -30 → BAD
+ *   < -30 → HALL OF SHAME
+ */
+export function getMalakaRank(eventsOrganised: number, fines: number, memberName: string): MalakaRank {
+  const score = eventsOrganised * 10 - fines * 5
+  const h = nameHash(memberName)
+
+  if (score >= 30) {
+    return {
+      name: TOP_TIER_RANKS[h % TOP_TIER_RANKS.length],
+      tier: 'top',
+      color: 'text-amber-300',
+      glowStyle: '0 0 8px rgba(252,211,77,0.95), 0 0 20px rgba(252,211,77,0.5)',
+    }
+  }
+  if (score >= 0) {
+    return {
+      name: GOOD_RANKS[h % GOOD_RANKS.length],
+      tier: 'good',
+      color: 'text-emerald-400',
+      glowStyle: '0 0 8px rgba(52,211,153,0.95), 0 0 20px rgba(52,211,153,0.5)',
+    }
+  }
+  if (score >= -15) {
+    return {
+      name: SUSPICIOUS_RANKS[h % SUSPICIOUS_RANKS.length],
+      tier: 'suspicious',
+      color: 'text-amber-400',
+      glowStyle: '0 0 8px rgba(251,191,36,0.95), 0 0 20px rgba(251,191,36,0.5)',
+    }
+  }
+  if (score >= -30) {
+    return {
+      name: BAD_RANKS[h % BAD_RANKS.length],
+      tier: 'bad',
+      color: 'text-red-400',
+      glowStyle: '0 0 8px rgba(248,113,113,0.95), 0 0 20px rgba(248,113,113,0.5)',
+    }
+  }
+  return {
+    name: SHAME_RANKS[h % SHAME_RANKS.length],
+    tier: 'shame',
+    color: 'text-purple-400',
+    glowStyle: '0 0 8px rgba(192,132,252,0.95), 0 0 20px rgba(192,132,252,0.5)',
+  }
+}
