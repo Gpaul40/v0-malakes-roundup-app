@@ -20,6 +20,7 @@ import {
   uploadAvatarAction,
   uploadAppImageAction,
   uploadEventGalleryAction,
+  listEventGalleryAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -104,14 +105,12 @@ export function MainApp({ currentUser }: MainAppProps) {
 
   const loadEventGallery = async (eventId: string) => {
     setGalleryLoading(true)
-    const { data, error } = await supabase.storage
-      .from('Photos')
-      .list('', { search: `gallery-${eventId}-` })
-    if (!error && data) {
-      const urls = data
-        .filter(f => f.name.startsWith(`gallery-${eventId}-`))
-        .map(f => supabase.storage.from('Photos').getPublicUrl(f.name).data.publicUrl)
-      setGalleryImages(urls)
+    setGalleryError(null)
+    const result = await listEventGalleryAction(eventId)
+    if ('urls' in result) {
+      setGalleryImages(result.urls)
+    } else {
+      setGalleryError(result.error)
     }
     setGalleryLoading(false)
   }

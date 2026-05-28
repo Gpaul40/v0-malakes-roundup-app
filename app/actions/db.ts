@@ -128,7 +128,8 @@ export async function uploadEventGalleryAction(eventId: string, formData: FormDa
   if (!file) return { error: 'No file provided' }
 
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `gallery-${eventId}-${Date.now()}.${ext}`
+  // Store in a subfolder per event so list() is simple and reliable
+  const path = `gallery/${eventId}/${Date.now()}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error: upErr } = await supabaseServer.storage
@@ -139,6 +140,22 @@ export async function uploadEventGalleryAction(eventId: string, formData: FormDa
 
   const { data: { publicUrl } } = supabaseServer.storage.from('Photos').getPublicUrl(path)
   return { url: publicUrl }
+}
+
+export async function listEventGalleryAction(eventId: string): Promise<{ urls: string[] } | { error: string }> {
+  await requireSession()
+
+  const { data, error } = await supabaseServer.storage
+    .from('Photos')
+    .list(`gallery/${eventId}`, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+
+  if (error) return { error: error.message }
+
+  const urls = (data ?? [])
+    .filter(f => f.name !== '.emptyFolderPlaceholder')
+    .map(f => supabaseServer.storage.from('Photos').getPublicUrl(`gallery/${eventId}/${f.name}`).data.publicUrl)
+
+  return { urls }
 }
 
 export async function uploadAvatarAction(formData: FormData): Promise<{ url: string } | { error: string }> {
