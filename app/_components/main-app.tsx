@@ -48,8 +48,11 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [galleryImages, setGalleryImages] = useState<string[]>([])
   const [galleryLoading, setGalleryLoading] = useState(false)
   const [galleryUploading, setGalleryUploading] = useState(false)
+  const [galleryError, setGalleryError] = useState<string | null>(null)
   const [lightboxImg, setLightboxImg] = useState<string | null>(null)
   const galleryInputRef = useRef<HTMLInputElement>(null)
+  // Use a ref to capture eventId at click-time, avoiding stale closure in onChange
+  const pendingGalleryEventIdRef = useRef<string | null>(null)
 
   // Admin override for current organiser
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
@@ -128,17 +131,28 @@ export function MainApp({ currentUser }: MainAppProps) {
 
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    if (!files.length || !galleryEventId) return
+    // Use ref for event ID to avoid stale closure when triggered from event card buttons
+    const targetEventId = pendingGalleryEventIdRef.current || galleryEventId
+    if (!files.length || !targetEventId) {
+      console.error('Gallery upload: no files or no eventId', { files: files.length, targetEventId })
+      return
+    }
+    setGalleryError(null)
     setGalleryUploading(true)
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
-      const result = await uploadEventGalleryAction(galleryEventId, fd)
+      const result = await uploadEventGalleryAction(targetEventId, fd)
       if ('url' in result) {
         setGalleryImages(prev => [...prev, result.url])
+      } else {
+        console.error('Gallery upload error:', result.error)
+        setGalleryError(result.error)
+        alert('Upload failed: ' + result.error)
       }
     }
     setGalleryUploading(false)
+    pendingGalleryEventIdRef.current = null
     e.target.value = ''
   }
 
@@ -1042,7 +1056,12 @@ export function MainApp({ currentUser }: MainAppProps) {
                     View Gallery
                   </button>
                   <button
-                    onClick={() => { setGalleryEventId(event.id); setGalleryEventTitle(event.title); setTimeout(() => galleryInputRef.current?.click(), 50) }}
+                    onClick={() => {
+                      pendingGalleryEventIdRef.current = event.id
+                      setGalleryEventId(event.id)
+                      setGalleryEventTitle(event.title)
+                      galleryInputRef.current?.click()
+                    }}
                     className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                   >
                     <Upload className="w-3 h-3" />
@@ -1079,7 +1098,7 @@ export function MainApp({ currentUser }: MainAppProps) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => galleryInputRef.current?.click()}
+                onClick={() => { pendingGalleryEventIdRef.current = galleryEventId; galleryInputRef.current?.click() }}
                 disabled={galleryUploading}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors disabled:opacity-50"
               >
@@ -1094,6 +1113,11 @@ export function MainApp({ currentUser }: MainAppProps) {
 
           {/* Grid */}
           <div className="flex-1 overflow-y-auto p-3">
+            {galleryError && (
+              <div className="mb-3 p-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                ⚠️ {galleryError}
+              </div>
+            )}
             {galleryLoading ? (
               <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">Loading…</div>
             ) : galleryImages.length === 0 ? (
@@ -1101,7 +1125,7 @@ export function MainApp({ currentUser }: MainAppProps) {
                 <Images className="w-10 h-10 opacity-30" />
                 <p className="text-sm">No photos yet. Be the first to upload!</p>
                 <button
-                  onClick={() => galleryInputRef.current?.click()}
+                  onClick={() => { pendingGalleryEventIdRef.current = galleryEventId; galleryInputRef.current?.click() }}
                   className="text-xs px-3 py-1.5 rounded-lg bg-primary/20 text-primary hover:bg-primary/30 transition-colors"
                 >
                   Upload Photos
