@@ -129,29 +129,27 @@ export function MainApp({ currentUser }: MainAppProps) {
   }
 
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Mirror avatar upload pattern exactly — iterate files one at a time
     const files = Array.from(e.target.files || [])
-    // Use ref for event ID to avoid stale closure when triggered from event card buttons
     const targetEventId = pendingGalleryEventIdRef.current || galleryEventId
-    if (!files.length || !targetEventId) {
-      console.error('Gallery upload: no files or no eventId', { files: files.length, targetEventId })
-      return
-    }
+    if (!files.length || !targetEventId) return
     setGalleryError(null)
     setGalleryUploading(true)
     for (const file of files) {
       const fd = new FormData()
       fd.append('file', file)
       const result = await uploadEventGalleryAction(targetEventId, fd)
-      if ('url' in result) {
-        setGalleryImages(prev => [...prev, result.url])
-      } else {
-        console.error('Gallery upload error:', result.error)
-        setGalleryError(result.error)
+      if ('error' in result) {
+        console.error('Gallery upload failed:', result.error)
         alert('Upload failed: ' + result.error)
+        setGalleryError(result.error)
+      } else {
+        setGalleryImages(prev => [...prev, result.url])
       }
     }
     setGalleryUploading(false)
     pendingGalleryEventIdRef.current = null
+    // reset so same file can be re-selected
     e.target.value = ''
   }
 

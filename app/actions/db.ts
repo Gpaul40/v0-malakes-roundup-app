@@ -123,18 +123,20 @@ export async function uploadAppImageAction(key: string, formData: FormData): Pro
 }
 
 export async function uploadEventGalleryAction(eventId: string, formData: FormData): Promise<{ url: string } | { error: string }> {
-  await requireSession()
+  // No session requirement — everyone can add to the event gallery
+  const session = await getSession()
+  if (!session) return { error: 'Not authenticated' }
+
   const file = formData.get('file') as File | null
   if (!file) return { error: 'No file provided' }
 
   const ext = file.name.split('.').pop() ?? 'jpg'
-  // Store in a subfolder per event so list() is simple and reliable
-  const path = `gallery/${eventId}/${Date.now()}.${ext}`
+  const path = `gallery/${eventId}/${session.username.toLowerCase()}-${Date.now()}.${ext}`
   const buffer = Buffer.from(await file.arrayBuffer())
 
   const { error: upErr } = await supabaseServer.storage
     .from('Photos')
-    .upload(path, buffer, { contentType: file.type, upsert: false })
+    .upload(path, buffer, { contentType: file.type, upsert: true })
 
   if (upErr) return { error: upErr.message }
 
@@ -143,11 +145,12 @@ export async function uploadEventGalleryAction(eventId: string, formData: FormDa
 }
 
 export async function listEventGalleryAction(eventId: string): Promise<{ urls: string[] } | { error: string }> {
-  await requireSession()
+  const session = await getSession()
+  if (!session) return { error: 'Not authenticated' }
 
   const { data, error } = await supabaseServer.storage
     .from('Photos')
-    .list(`gallery/${eventId}`, { limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+    .list(`gallery/${eventId}`, { limit: 200, sortBy: { column: 'name', order: 'desc' } })
 
   if (error) return { error: error.message }
 
