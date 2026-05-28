@@ -20,6 +20,7 @@ import {
   uploadAvatarAction,
   uploadAppImageAction,
   uploadEventGalleryAction,
+  getGalleryUploadUrlAction,
   listEventGalleryAction,
 } from '@/app/actions/db'
 
@@ -129,27 +130,49 @@ export function MainApp({ currentUser }: MainAppProps) {
   }
 
   const handleGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Mirror avatar upload pattern exactly — iterate files one at a time
     const files = Array.from(e.target.files || [])
     const targetEventId = pendingGalleryEventIdRef.current || galleryEventId
     if (!files.length || !targetEventId) return
     setGalleryError(null)
     setGalleryUploading(true)
+
     for (const file of files) {
-      const fd = new FormData()
-      fd.append('file', file)
-      const result = await uploadEventGalleryAction(targetEventId, fd)
-      if ('error' in result) {
-        console.error('Gallery upload failed:', result.error)
-        alert('Upload failed: ' + result.error)
-        setGalleryError(result.error)
-      } else {
-        setGalleryImages(prev => [...prev, result.url])
+      try {
+        // Step 1: get a signed upload URL from the server (avoids sending large file through server action)
+        const urlResult = await getGalleryUploadUrlAction(targetEventId, file.name, file.type || 'image/jpeg')
+        if ('error' in urlResult) {
+          alert('Upload failed: ' + urlResult.error)
+          setGalleryError(urlResult.error)
+          continue
+        }
+
+        // Step 2: upload directly from client to Supabase using the signed URL
+        const uploadRes = await fetch(urlResult.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'image/jpeg', 'x-upsert': 'true' },
+          body: file,
+        })
+
+        if (!uploadRes.ok) {
+          const msg = `Upload failed (${uploadRes.status})`
+          alert(msg)
+          setGalleryError(msg)
+          continue
+        }
+
+        // Step 3: get public URL and add to UI
+        const { data: { publicUrl } } = (await import('@/lib/supabase')).supabase.storage
+          .from('Photos')
+          .getPublicUrl(urlResult.path)
+        setGalleryImages(prev => [...prev, publicUrl])
+      } catch (err: any) {
+        alert('Upload failed: ' + (err?.message ?? String(err)))
+        setGalleryError(err?.message ?? 'Unknown error')
       }
     }
+
     setGalleryUploading(false)
     pendingGalleryEventIdRef.current = null
-    // reset so same file can be re-selected
     e.target.value = ''
   }
 

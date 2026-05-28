@@ -122,21 +122,40 @@ export async function uploadAppImageAction(key: string, formData: FormData): Pro
   return { url: publicUrl }
 }
 
+export async function getGalleryUploadUrlAction(eventId: string, fileName: string, contentType: string): Promise<{ signedUrl: string; path: string; token: string } | { error: string }> {
+  const session = await getSession()
+  if (!session) return { error: 'Not authenticated' }
+
+  const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg'
+  // Normalize HEIC/HEIF to jpg path so browsers can display it
+  const safeExt = ['heic', 'heif'].includes(ext) ? 'jpg' : ext
+  const path = `gallery/${eventId}/${session.username.toLowerCase()}-${Date.now()}.${safeExt}`
+
+  const { data, error } = await supabaseServer.storage
+    .from('Photos')
+    .createSignedUploadUrl(path)
+
+  if (error || !data) return { error: error?.message ?? 'Failed to create upload URL' }
+
+  return { signedUrl: data.signedUrl, path, token: data.token }
+}
+
 export async function uploadEventGalleryAction(eventId: string, formData: FormData): Promise<{ url: string } | { error: string }> {
-  // No session requirement — everyone can add to the event gallery
   const session = await getSession()
   if (!session) return { error: 'Not authenticated' }
 
   const file = formData.get('file') as File | null
   if (!file) return { error: 'No file provided' }
 
-  const ext = file.name.split('.').pop() ?? 'jpg'
-  const path = `gallery/${eventId}/${session.username.toLowerCase()}-${Date.now()}.${ext}`
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+  const safeExt = ['heic', 'heif'].includes(ext) ? 'jpg' : ext
+  const path = `gallery/${eventId}/${session.username.toLowerCase()}-${Date.now()}.${safeExt}`
   const buffer = Buffer.from(await file.arrayBuffer())
+  const mimeType = file.type || 'image/jpeg'
 
   const { error: upErr } = await supabaseServer.storage
     .from('Photos')
-    .upload(path, buffer, { contentType: file.type, upsert: true })
+    .upload(path, buffer, { contentType: mimeType, upsert: true })
 
   if (upErr) return { error: upErr.message }
 
