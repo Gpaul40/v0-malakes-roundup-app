@@ -201,3 +201,49 @@ export async function uploadAvatarAction(formData: FormData): Promise<{ url: str
 
   return { url: publicUrl }
 }
+
+export async function detonateOrganiserAction(data: {
+  currentOrganiser: string
+  nextOrganiser: string
+  daysRemaining: number
+}): Promise<{ success: boolean } | { error: string }> {
+  const session = await requireSession()
+  if (session.username !== 'GABE' && session.username !== data.currentOrganiser) {
+    return { error: 'Forbidden' }
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+
+  const { error: fineErr } = await supabaseServer.from('fines').insert({
+    id: String(Date.now()),
+    member_id: data.currentOrganiser.toLowerCase(),
+    member_name: data.currentOrganiser,
+    amount: 200,
+    reason: `Failed to organise — Turn detonated by ${session.username === data.currentOrganiser ? 'self' : 'admin'}`,
+    date: today,
+    paid: false,
+  })
+
+  if (fineErr) return { error: fineErr.message }
+
+  // Next organiser gets their normal 14 days PLUS whatever days were remaining
+  const newEnd = new Date()
+  newEnd.setDate(newEnd.getDate() + 14 + Math.max(0, data.daysRemaining))
+  const newEndStr = newEnd.toISOString().split('T')[0]
+
+  const { error: overrideErr } = await supabaseServer.from('member_profiles').upsert({
+    name: '__app_detonate_override__',
+    avatar_url: JSON.stringify({ organiser: data.nextOrganiser, endDate: newEndStr }),
+  })
+
+  if (overrideErr) return { error: overrideErr.message }
+
+  return { success: true }
+}
+
+export async function clearDetonateOverrideAction(): Promise<{ success: boolean } | { error: string }> {
+  const session = await requireSession()
+  if (session.username !== 'GABE') return { error: 'Admin only' }
+  await supabaseServer.from('member_profiles').delete().eq('name', '__app_detonate_override__')
+  return { success: true }
+}

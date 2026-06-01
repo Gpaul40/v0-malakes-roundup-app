@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut, Images, Upload } from 'lucide-react'
+import { Crown, ChevronRight, Plus, Trophy, AlertTriangle, Star, CalendarDays, DollarSign, MapPin, Check, Settings, X, LogOut, Images, Upload, Zap } from 'lucide-react'
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,8 @@ import {
   uploadEventGalleryAction,
   getGalleryUploadUrlAction,
   listEventGalleryAction,
+  detonateOrganiserAction,
+  clearDetonateOverrideAction,
 } from '@/app/actions/db'
 
 interface MainAppProps {
@@ -60,6 +62,11 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [overrideOrganiser, setOverrideOrganiser] = useState<string | null>(null)
   const isAdmin = currentUser === 'GABE'
   const [rippleCell, setRippleCell] = useState<string | null>(null)
+
+  // Detonate override (persisted in DB)
+  const [detonateOverride, setDetonateOverride] = useState<{ organiser: string; endDate: string } | null>(null)
+  const [showDetonateConfirm, setShowDetonateConfirm] = useState(false)
+  const [detonating, setDetonating] = useState(false)
 
   // Confetti burst when celebration modal opens
   useEffect(() => {
@@ -240,6 +247,18 @@ export function MainApp({ currentUser }: MainAppProps) {
       const map: Record<string, string> = {}
       for (const p of profilesRes.data as any[]) {
         if (p.name === '__app_roulette__') { setRouletteBanner(p.avatar_url); continue }
+        if (p.name === '__app_detonate_override__') {
+          try {
+            const parsed = JSON.parse(p.avatar_url)
+            // Only use if the end date hasn't passed
+            if (parsed.organiser && parsed.endDate && new Date(parsed.endDate) >= new Date()) {
+              setDetonateOverride(parsed)
+            } else {
+              setDetonateOverride(null)
+            }
+          } catch { setDetonateOverride(null) }
+          continue
+        }
         if (p.avatar_url) map[p.name] = p.avatar_url
       }
       setAvatars(map)
@@ -264,16 +283,22 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [currentProposal, setCurrentProposal] = useState<EventProposal | null>(null)
 
   const cycleInfo = getCurrentCycleInfo()
-  const cycleEndDateStr = cycleInfo.cycleEndDate.toISOString()
 
-  // Use override or calculated organiser
-  const currentOrganiser = overrideOrganiser || ROTATION_ORDER[cycleInfo.currentOrganiserIndex]
+  // Use detonate override > admin override > calculated organiser
+  const detonateActive = detonateOverride !== null
+  const currentOrganiser = detonateActive
+    ? detonateOverride!.organiser
+    : (overrideOrganiser || ROTATION_ORDER[cycleInfo.currentOrganiserIndex])
   const nextOrganiserIndex = (ROTATION_ORDER.indexOf(currentOrganiser) + 1) % ROTATION_ORDER.length
   const nextOrganiser = ROTATION_ORDER[nextOrganiserIndex]
 
   const currentMember = membersState.find(m => m.name === currentOrganiser)
 
-  // Countdown timer
+  // Countdown timer — use detonate override end date if active
+  const cycleEndDateStr = detonateActive
+    ? new Date(detonateOverride!.endDate + 'T23:59:59').toISOString()
+    : cycleInfo.cycleEndDate.toISOString()
+
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 })
 
   useEffect(() => {
@@ -421,6 +446,27 @@ export function MainApp({ currentUser }: MainAppProps) {
     setEventsState(prev => prev.filter(e => e.id !== eventId))
   }
 
+  const handleDetonate = async () => {
+    setDetonating(true)
+    const result = await detonateOrganiserAction({
+      currentOrganiser,
+      nextOrganiser,
+      daysRemaining: timeLeft.days,
+    })
+    if ('error' in result) {
+      alert('Detonate failed: ' + result.error)
+    } else {
+      setShowDetonateConfirm(false)
+      await loadData()
+    }
+    setDetonating(false)
+  }
+
+  const handleClearDetonateOverride = async () => {
+    await clearDetonateOverrideAction()
+    setDetonateOverride(null)
+  }
+
   // Leaderboard sorted by events organised
   const leaderboard = [...membersState].sort((a, b) => b.eventsOrganised - a.eventsOrganised)
   const outstandingFines = finesState.filter(f => !f.paid)
@@ -492,6 +538,16 @@ export function MainApp({ currentUser }: MainAppProps) {
                 className="mt-2 text-xs text-muted-foreground"
               >
                 Reset to automatic rotation
+              </Button>
+            )}
+            {detonateActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleClearDetonateOverride}
+                className="mt-2 text-xs text-red-400/70 hover:text-red-400"
+              >
+                Clear detonate override ({detonateOverride!.organiser} → auto)
               </Button>
             )}
           </div>
@@ -605,6 +661,65 @@ export function MainApp({ currentUser }: MainAppProps) {
             )
           })()}
         </div>
+
+        {/* Detonate Switch — admin or current organiser only */}
+        {(isAdmin || currentUser === currentOrganiser) && (
+          <div className="glass-card rounded-xl p-4 border border-red-500/30 bg-red-500/5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xl shrink-0">💣</span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-red-400 flex items-center gap-1">
+                    <Zap className="w-3.5 h-3.5" /> Detonate Switch
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    Kills {currentOrganiser}&apos;s turn · $200 fine · passes to {nextOrganiser}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDetonateConfirm(true)}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 active:bg-red-500/40 border border-red-500/40 text-red-400 text-xs font-bold uppercase tracking-wider transition-all"
+              >
+                DETONATE
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Detonate Confirmation Modal */}
+        {showDetonateConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm px-4">
+            <div className="glass-card rounded-2xl p-6 w-full max-w-sm border border-red-500/50 shadow-2xl space-y-4 text-center">
+              <div className="text-5xl animate-bomb-shake">💣</div>
+              <div>
+                <h2 className="text-xl font-bold text-red-400 uppercase tracking-wide">Detonate {currentOrganiser}?</h2>
+                <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                  This will issue a <span className="text-red-400 font-bold">$200 fine</span> to {currentOrganiser} and hand the role to{' '}
+                  <span className="text-primary font-bold">{nextOrganiser}</span>, who gets{' '}
+                  <span className="text-secondary font-bold">14 + {timeLeft.days} days</span> to organise.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="ghost"
+                  className="flex-1 border border-border text-muted-foreground"
+                  onClick={() => setShowDetonateConfirm(false)}
+                  disabled={detonating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold border-0"
+                  onClick={handleDetonate}
+                  disabled={detonating}
+                >
+                  {detonating ? '...' : '💥 DETONATE'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Next Organiser */}
         <div className="glass-card rounded-xl p-4">
