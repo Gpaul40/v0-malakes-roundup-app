@@ -437,8 +437,13 @@ export function MainApp({ currentUser }: MainAppProps) {
   }
 
   const handlePayFine = async (fineId: string) => {
-    await payFineAction(fineId)
-    setFinesState(finesState.map(f => f.id === fineId ? { ...f, paid: true } : f))
+    try {
+      await payFineAction(fineId)
+      setFinesState(prev => prev.map(f => f.id === fineId ? { ...f, paid: true } : f))
+      await loadData()
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to verify fine payment')
+    }
   }
 
   const handleDeleteEvent = async (eventId: string) => {
@@ -467,16 +472,39 @@ export function MainApp({ currentUser }: MainAppProps) {
     setDetonateOverride(null)
   }
 
-  // Leaderboard sorted by events organised
-  const leaderboard = [...membersState].sort((a, b) => b.eventsOrganised - a.eventsOrganised)
+  const memberStatsByName = membersState.reduce((acc, member) => {
+    const eventsOrganised = eventsState.filter((event) => event.organiserName === member.name).length
+    const outstandingFineCount = finesState.filter((fine) => fine.memberName === member.name && !fine.paid).length
+    const totalFineAmount = finesState
+      .filter((fine) => fine.memberName === member.name)
+      .reduce((sum, fine) => sum + fine.amount, 0)
+
+    acc[member.name] = {
+      ...member,
+      eventsOrganised,
+      fines: outstandingFineCount,
+      totalFineAmount,
+      score: eventsOrganised - outstandingFineCount,
+    }
+    return acc
+  }, {} as Record<string, Member & { score: number }>)
+
+  const currentMemberStats = currentMember ? memberStatsByName[currentMember.name] : null
+
+  // Leaderboard sorted by live score
+  const leaderboard = Object.values(memberStatsByName).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    if (b.eventsOrganised !== a.eventsOrganised) return b.eventsOrganised - a.eventsOrganised
+    return a.name.localeCompare(b.name)
+  })
   const outstandingFines = finesState.filter(f => !f.paid)
   const totalOutstanding = outstandingFines.reduce((sum, f) => sum + f.amount, 0)
   const majorityDateId = getMajorityDate()
 
   // Rank computation: use live events/fines data keyed by member name
   const memberRankMap = membersState.reduce((acc, m) => {
-    const evCount = eventsState.filter(e => e.organiserName === m.name).length
-    const fCount = finesState.filter(f => f.memberName === m.name).length
+    const evCount = memberStatsByName[m.name]?.eventsOrganised ?? 0
+    const fCount = memberStatsByName[m.name]?.fines ?? 0
     acc[m.name] = getMalakaRank(evCount, fCount, m.name)
     return acc
   }, {} as Record<string, ReturnType<typeof getMalakaRank>>)
@@ -589,7 +617,7 @@ export function MainApp({ currentUser }: MainAppProps) {
             <div className="text-center">
               <h2 className="text-4xl font-bold text-gold-gradient">{currentOrganiser}</h2>
               <p className="text-sm text-white/60">
-                {currentMember?.eventsOrganised || 0} events organised
+                {currentMemberStats?.eventsOrganised || 0} events organised
               </p>
               {organiserRank && (
                 <p
@@ -1040,14 +1068,18 @@ export function MainApp({ currentUser }: MainAppProps) {
                     <p className="text-sm font-medium truncate">{fine.memberName}</p>
                     <p className="text-xs text-muted-foreground truncate">{fine.reason}</p>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handlePayFine(fine.id)}
-                    className="ml-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs"
-                  >
-                    <DollarSign className="w-3 h-3 mr-1" />
-                    {fine.amount}
-                  </Button>
+                  {isAdmin ? (
+                    <Button
+                      size="sm"
+                      onClick={() => handlePayFine(fine.id)}
+                      className="ml-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 text-xs"
+                    >
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      {fine.amount}
+                    </Button>
+                  ) : (
+                    <span className="ml-2 text-[11px] text-amber-400/80 whitespace-nowrap">Awaiting admin verify</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -1137,8 +1169,8 @@ export function MainApp({ currentUser }: MainAppProps) {
                     )}
                   </div>
                 </div>
-                <span className="text-sm text-muted-foreground">
-                  {member.eventsOrganised} events held
+                <span className={`text-sm font-semibold ${member.score < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {member.score > 0 ? '+' : ''}{member.score} score
                 </span>
               </div>
             ))}

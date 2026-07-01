@@ -89,7 +89,8 @@ export async function confirmEventAction(data: {
 }
 
 export async function payFineAction(fineId: string) {
-  await requireSession()
+  const session = await requireSession()
+  if (session.username !== 'GABE') throw new Error('Admin only')
   await supabaseServer.from('fines').update({ paid: true }).eq('id', fineId)
 }
 
