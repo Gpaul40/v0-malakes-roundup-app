@@ -278,3 +278,35 @@ export async function adjustMemberScoreAction(data: { memberName: string; delta:
 
   return { success: true, adjustment: nextAdjustment }
 }
+
+export async function updateEventAttendanceAction(data: { eventId: string; memberName: string; attended: boolean }): Promise<{ success: boolean } | { error: string }> {
+  const session = await requireSession()
+  if (session.username !== 'GABE') return { error: 'Admin only' }
+
+  const memberName = data.memberName.trim().toUpperCase()
+  if (!memberName) return { error: 'Member name is required' }
+
+  const { data: eventRow, error: readErr } = await supabaseServer
+    .from('events')
+    .select('attendees')
+    .eq('id', data.eventId)
+    .maybeSingle()
+  if (readErr) return { error: readErr.message }
+  if (!eventRow) return { error: 'Event not found' }
+
+  const currentAttendees = Array.isArray(eventRow.attendees)
+    ? eventRow.attendees.filter((a): a is string => typeof a === 'string')
+    : []
+
+  const nextAttendees = data.attended
+    ? Array.from(new Set([...currentAttendees, memberName]))
+    : currentAttendees.filter((name) => name !== memberName)
+
+  const { error: updateErr } = await supabaseServer
+    .from('events')
+    .update({ attendees: nextAttendees })
+    .eq('id', data.eventId)
+  if (updateErr) return { error: updateErr.message }
+
+  return { success: true }
+}

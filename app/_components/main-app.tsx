@@ -17,6 +17,7 @@ import {
   confirmEventAction,
   payFineAction,
   adjustMemberScoreAction,
+  updateEventAttendanceAction,
   deleteEventAction,
   uploadAvatarAction,
   uploadAppImageAction,
@@ -38,6 +39,7 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [eventsState, setEventsState] = useState<Event[]>([])
   const [finesState, setFinesState] = useState<Fine[]>([])
   const [scoreAdjustments, setScoreAdjustments] = useState<Record<string, number>>({})
+  const [attendanceSavingCells, setAttendanceSavingCells] = useState<Record<string, boolean>>({})
   const [showEventForm, setShowEventForm] = useState(false)
   const [showVoting, setShowVoting] = useState(false)
   const [showEventComplete, setShowEventComplete] = useState(false)
@@ -494,6 +496,40 @@ export function MainApp({ currentUser }: MainAppProps) {
     await loadData()
   }
 
+  const handleToggleAttendance = async (eventId: string, memberName: string, currentlyAttended: boolean) => {
+    if (!isAdmin) return
+    const key = `${eventId}:${memberName}`
+    setAttendanceSavingCells(prev => ({ ...prev, [key]: true }))
+
+    setEventsState(prev => prev.map((event) => {
+      if (event.id !== eventId) return event
+      const attendees = Array.isArray(event.attendees) ? event.attendees : []
+      return {
+        ...event,
+        attendees: currentlyAttended
+          ? attendees.filter((name) => name !== memberName)
+          : Array.from(new Set([...attendees, memberName])),
+      }
+    }))
+
+    const result = await updateEventAttendanceAction({
+      eventId,
+      memberName,
+      attended: !currentlyAttended,
+    })
+
+    if ('error' in result) {
+      alert(result.error)
+      await loadData()
+    }
+
+    setAttendanceSavingCells(prev => {
+      const next = { ...prev }
+      delete next[key]
+      return next
+    })
+  }
+
   const memberStatsByName = membersState.reduce((acc, member) => {
     const eventsOrganised = eventsState.filter((event) => event.organiserName === member.name).length
     const outstandingFineCount = finesState.filter((fine) => fine.memberName === member.name && !fine.paid).length
@@ -523,6 +559,9 @@ export function MainApp({ currentUser }: MainAppProps) {
   const outstandingFines = finesState.filter(f => !f.paid)
   const totalOutstanding = outstandingFines.reduce((sum, f) => sum + f.amount, 0)
   const majorityDateId = getMajorityDate()
+  const attendanceEvents = [...eventsState]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .slice(-5)
 
   // Rank computation: use live events/fines data keyed by member name
   const memberRankMap = membersState.reduce((acc, m) => {
@@ -1219,6 +1258,65 @@ export function MainApp({ currentUser }: MainAppProps) {
                 </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-4 border-t border-border/50 pt-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Event Attendance</span>
+              <span className="text-[11px] text-muted-foreground">{isAdmin ? 'Tap to mark attendance' : 'View only'}</span>
+            </div>
+            {attendanceEvents.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-2">No events yet to track attendance.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-collapse min-w-[420px]">
+                  <thead>
+                    <tr>
+                      <th className="text-left p-2 border-b border-border text-muted-foreground font-medium">Member</th>
+                      {attendanceEvents.map((event, index) => (
+                        <th key={event.id} className="text-center p-2 border-b border-border text-muted-foreground font-medium" title={event.title}>
+                          E{index + 1}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ROTATION_ORDER.map((memberName, rowIndex) => (
+                      <tr key={memberName} className={rowIndex % 2 === 0 ? 'bg-muted/10' : ''}>
+                        <td className="p-2 border-b border-border/40 font-medium">{memberName}</td>
+                        {attendanceEvents.map((event) => {
+                          const attended = event.attendees.includes(memberName)
+                          const cellKey = `${event.id}:${memberName}`
+                          const saving = Boolean(attendanceSavingCells[cellKey])
+                          return (
+                            <td key={`${event.id}-${memberName}`} className="p-2 border-b border-border/40 text-center">
+                              {isAdmin ? (
+                                <button
+                                  onClick={() => handleToggleAttendance(event.id, memberName, attended)}
+                                  disabled={saving}
+                                  className={`w-7 h-7 rounded-md text-[11px] font-bold border transition-colors disabled:opacity-60 ${
+                                    attended
+                                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                                      : 'bg-muted/40 border-border text-muted-foreground'
+                                  }`}
+                                  title={`${memberName} ${attended ? 'attended' : 'did not attend'} ${event.title}`}
+                                >
+                                  {saving ? '…' : attended ? '✓' : '—'}
+                                </button>
+                              ) : (
+                                <span className={attended ? 'text-emerald-300 font-bold' : 'text-muted-foreground'}>
+                                  {attended ? '✓' : '—'}
+                                </span>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
 
