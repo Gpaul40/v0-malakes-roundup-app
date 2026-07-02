@@ -248,3 +248,33 @@ export async function clearDetonateOverrideAction(): Promise<{ success: boolean 
   await supabaseServer.from('member_profiles').delete().eq('name', '__app_detonate_override__')
   return { success: true }
 }
+
+const SCORE_ADJUSTMENT_PREFIX = '__score_adjustment__'
+
+export async function adjustMemberScoreAction(data: { memberName: string; delta: number }): Promise<{ success: boolean; adjustment: number } | { error: string }> {
+  const session = await requireSession()
+  if (session.username !== 'GABE') return { error: 'Admin only' }
+
+  const memberName = data.memberName.trim().toUpperCase()
+  if (!memberName) return { error: 'Member name is required' }
+  if (!Number.isFinite(data.delta) || Math.abs(data.delta) !== 1) return { error: 'Delta must be +1 or -1' }
+
+  const key = `${SCORE_ADJUSTMENT_PREFIX}${memberName}`
+  const { data: existing, error: readErr } = await supabaseServer
+    .from('member_profiles')
+    .select('avatar_url')
+    .eq('name', key)
+    .maybeSingle()
+  if (readErr) return { error: readErr.message }
+
+  const current = Number(existing?.avatar_url ?? 0)
+  const currentAdjustment = Number.isFinite(current) ? Math.trunc(current) : 0
+  const nextAdjustment = currentAdjustment + Math.trunc(data.delta)
+
+  const { error: upsertErr } = await supabaseServer
+    .from('member_profiles')
+    .upsert({ name: key, avatar_url: String(nextAdjustment) })
+  if (upsertErr) return { error: upsertErr.message }
+
+  return { success: true, adjustment: nextAdjustment }
+}

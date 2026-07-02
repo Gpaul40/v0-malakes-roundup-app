@@ -16,6 +16,7 @@ import {
   toggleAvailabilityAction,
   confirmEventAction,
   payFineAction,
+  adjustMemberScoreAction,
   deleteEventAction,
   uploadAvatarAction,
   uploadAppImageAction,
@@ -26,6 +27,8 @@ import {
   clearDetonateOverrideAction,
 } from '@/app/actions/db'
 
+const SCORE_ADJUSTMENT_PREFIX = '__score_adjustment__'
+
 interface MainAppProps {
   currentUser: string
 }
@@ -34,6 +37,7 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [membersState] = useState<Member[]>(initialMembers)
   const [eventsState, setEventsState] = useState<Event[]>([])
   const [finesState, setFinesState] = useState<Fine[]>([])
+  const [scoreAdjustments, setScoreAdjustments] = useState<Record<string, number>>({})
   const [showEventForm, setShowEventForm] = useState(false)
   const [showVoting, setShowVoting] = useState(false)
   const [showEventComplete, setShowEventComplete] = useState(false)
@@ -245,6 +249,7 @@ export function MainApp({ currentUser }: MainAppProps) {
     }
     if (profilesRes.data) {
       const map: Record<string, string> = {}
+      const adjustments: Record<string, number> = {}
       for (const p of profilesRes.data as any[]) {
         if (p.name === '__app_roulette__') { setRouletteBanner(p.avatar_url); continue }
         if (p.name === '__app_detonate_override__') {
@@ -259,9 +264,16 @@ export function MainApp({ currentUser }: MainAppProps) {
           } catch { setDetonateOverride(null) }
           continue
         }
+        if (typeof p.name === 'string' && p.name.startsWith(SCORE_ADJUSTMENT_PREFIX)) {
+          const memberName = p.name.replace(SCORE_ADJUSTMENT_PREFIX, '')
+          const adjustment = Number(p.avatar_url ?? 0)
+          adjustments[memberName] = Number.isFinite(adjustment) ? Math.trunc(adjustment) : 0
+          continue
+        }
         if (p.avatar_url) map[p.name] = p.avatar_url
       }
       setAvatars(map)
+      setScoreAdjustments(adjustments)
     }
     setLoading(false)
   }, [])
@@ -472,19 +484,30 @@ export function MainApp({ currentUser }: MainAppProps) {
     setDetonateOverride(null)
   }
 
+  const handleAdjustScore = async (memberName: string, delta: number) => {
+    const result = await adjustMemberScoreAction({ memberName, delta })
+    if ('error' in result) {
+      alert(result.error)
+      return
+    }
+    setScoreAdjustments(prev => ({ ...prev, [memberName]: result.adjustment }))
+    await loadData()
+  }
+
   const memberStatsByName = membersState.reduce((acc, member) => {
     const eventsOrganised = eventsState.filter((event) => event.organiserName === member.name).length
     const outstandingFineCount = finesState.filter((fine) => fine.memberName === member.name && !fine.paid).length
     const totalFineAmount = finesState
       .filter((fine) => fine.memberName === member.name)
       .reduce((sum, fine) => sum + fine.amount, 0)
+    const scoreAdjustment = scoreAdjustments[member.name] ?? 0
 
     acc[member.name] = {
       ...member,
       eventsOrganised,
       fines: outstandingFineCount,
       totalFineAmount,
-      score: eventsOrganised - outstandingFineCount,
+      score: eventsOrganised - outstandingFineCount + scoreAdjustment,
     }
     return acc
   }, {} as Record<string, Member & { score: number }>)
@@ -1169,9 +1192,31 @@ export function MainApp({ currentUser }: MainAppProps) {
                     )}
                   </div>
                 </div>
-                <span className={`text-sm font-semibold ${member.score < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {member.score > 0 ? '+' : ''}{member.score} score
-                </span>
+                <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <div className="flex items-center gap-1">
+                      <Button
+                        size="sm"
+                        onClick={() => handleAdjustScore(member.name, -1)}
+                        className="h-7 w-7 px-0 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30"
+                        title={`Decrease ${member.name} score`}
+                      >
+                        -
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleAdjustScore(member.name, +1)}
+                        className="h-7 w-7 px-0 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30"
+                        title={`Increase ${member.name} score`}
+                      >
+                        +
+                      </Button>
+                    </div>
+                  )}
+                  <span className={`text-sm font-semibold ${member.score < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    {member.score > 0 ? '+' : ''}{member.score} score
+                  </span>
+                </div>
               </div>
             ))}
           </div>
