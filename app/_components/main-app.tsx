@@ -562,6 +562,10 @@ export function MainApp({ currentUser }: MainAppProps) {
   const attendanceEvents = [...eventsState]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .slice(-5)
+  const attendanceEventLabelById = attendanceEvents.reduce((acc, event, index) => {
+    acc[event.id] = `E${index + 1}`
+    return acc
+  }, {} as Record<string, string>)
 
   // Rank computation: use live events/fines data keyed by member name
   const memberRankMap = membersState.reduce((acc, m) => {
@@ -1297,15 +1301,15 @@ export function MainApp({ currentUser }: MainAppProps) {
                                   className={`w-7 h-7 rounded-md text-[11px] font-bold border transition-colors disabled:opacity-60 ${
                                     attended
                                       ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                                      : 'bg-muted/40 border-border text-muted-foreground'
+                                      : 'bg-red-500/20 border-red-500/40 text-red-300'
                                   }`}
                                   title={`${memberName} ${attended ? 'attended' : 'did not attend'} ${event.title}`}
                                 >
-                                  {saving ? '…' : attended ? '✓' : '—'}
+                                  {saving ? '…' : attended ? '✓' : 'X'}
                                 </button>
                               ) : (
-                                <span className={attended ? 'text-emerald-300 font-bold' : 'text-muted-foreground'}>
-                                  {attended ? '✓' : '—'}
+                                <span className={attended ? 'text-emerald-300 font-bold' : 'text-red-300 font-bold'}>
+                                  {attended ? '✓' : 'X'}
                                 </span>
                               )}
                             </td>
@@ -1331,7 +1335,9 @@ export function MainApp({ currentUser }: MainAppProps) {
             {eventsState.slice(0, 5).map((event) => (
               <div key={event.id} className="p-3 bg-muted/30 rounded-lg">
                 <div className="flex items-start justify-between mb-1">
-                  <h4 className="font-medium text-sm">{event.title}</h4>
+                  <h4 className="font-medium text-sm">
+                    {attendanceEventLabelById[event.id] ? `${attendanceEventLabelById[event.id]} · ` : ''}{event.title}
+                  </h4>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     {event.rating > 0 && (
                       <div className="flex items-center gap-1">
