@@ -15,6 +15,7 @@ import {
   submitEventProposalAction,
   toggleAvailabilityAction,
   confirmEventAction,
+  createConfirmedEventAction,
   payFineAction,
   adjustMemberScoreAction,
   updateEventAttendanceAction,
@@ -292,6 +293,11 @@ export function MainApp({ currentUser }: MainAppProps) {
   const [eventLocation, setEventLocation] = useState('')
   const [calendarDates, setCalendarDates] = useState<Date[]>([])
   const [dateTimes, setDateTimes] = useState<Record<string, string>>({})
+  // 'vote' = propose dates and let everyone vote. 'confirmed' = date already locked in.
+  const [eventMode, setEventMode] = useState<'vote' | 'confirmed'>('vote')
+  const [confirmedDate, setConfirmedDate] = useState<Date | undefined>(undefined)
+  const [confirmedTime, setConfirmedTime] = useState('')
+  const [dateLimitHint, setDateLimitHint] = useState(false)
 
   // Current proposal for voting
   const [currentProposal, setCurrentProposal] = useState<EventProposal | null>(null)
@@ -339,7 +345,8 @@ export function MainApp({ currentUser }: MainAppProps) {
     return () => clearInterval(timer)
   }, [cycleEndDateStr])
 
-  const toYMD = (d: Date) => d.toISOString().split('T')[0]
+  const toYMD = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
   const handleSubmitEvent = async () => {
     if (!eventTitle.trim() || !eventLocation.trim()) return
@@ -379,6 +386,44 @@ export function MainApp({ currentUser }: MainAppProps) {
     setShowEventForm(false)
     setShowVoting(true)
     // Immediately sync from DB to confirm the proposal was persisted
+    await loadData()
+  }
+
+  // Skip the vote entirely — the organiser already knows the date
+  const handleCreateConfirmedEvent = async () => {
+    if (!eventTitle.trim() || !eventLocation.trim()) return
+    if (!confirmedDate || !confirmedTime) return
+
+    const date = toYMD(confirmedDate)
+
+    await createConfirmedEventAction({
+      organiserId: currentMember?.id || '1',
+      organiserName: currentOrganiser,
+      title: eventTitle,
+      location: eventLocation,
+      date,
+      time: confirmedTime,
+      attendees: [...ROTATION_ORDER],
+    })
+
+    setConfirmedEvent({
+      title: eventTitle,
+      location: eventLocation,
+      date,
+      time: confirmedTime,
+      attendees: [...ROTATION_ORDER],
+    })
+    setEventTitle('')
+    setEventLocation('')
+    setConfirmedDate(undefined)
+    setConfirmedTime('')
+    setCalendarDates([])
+    setDateTimes({})
+    setEventMode('vote')
+    setCurrentProposal(null)
+    setShowEventForm(false)
+    setShowVoting(false)
+    setShowEventComplete(true)
     await loadData()
   }
 
@@ -908,6 +953,8 @@ export function MainApp({ currentUser }: MainAppProps) {
                     const times: Record<string, string> = {}
                     for (const d of currentProposal.dateOptions) times[d.date] = d.time
                     setDateTimes(times)
+                    setEventMode('vote')
+                    setDateLimitHint(false)
                     setShowVoting(false)
                     setShowEventForm(true)
                   }}
@@ -1031,6 +1078,27 @@ export function MainApp({ currentUser }: MainAppProps) {
 
             {showEventForm ? (
               <div className="space-y-3">
+                {/* Mode toggle — vote on dates, or lock one in directly */}
+                <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted/30 border border-border">
+                  {([
+                    { key: 'vote' as const, label: 'Vote on dates' },
+                    { key: 'confirmed' as const, label: 'Date confirmed' },
+                  ]).map(m => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() => setEventMode(m.key)}
+                      className={`text-xs font-semibold py-2 rounded-md transition-all ${
+                        eventMode === m.key
+                          ? 'bg-primary text-primary-foreground shadow-md'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
                 <Input
                   placeholder="Event title..."
                   value={eventTitle}
@@ -1047,57 +1115,122 @@ export function MainApp({ currentUser }: MainAppProps) {
                   />
                 </div>
 
-                {/* Date Options - Calendar */}
-                <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                    Proposed Dates — {cycleInfo.cycleStartDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} to {cycleInfo.cycleEndDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </p>
-                  <div className="flex justify-center bg-muted/20 rounded-lg p-2">
-                    <Calendar
-                      mode="multiple"
-                      selected={calendarDates}
-                      onSelect={(dates) => {
-                        const next = dates || []
-                        if (next.length <= 5) setCalendarDates(next)
-                      }}
-                      disabled={(date) => date < cycleInfo.cycleStartDate || date > cycleInfo.cycleEndDate}
-                      defaultMonth={cycleInfo.cycleStartDate}
-                    />
-                  </div>
-                  {calendarDates.length > 0 && (
-                    <div className="space-y-2 mt-2">
-                      <p className="text-xs text-muted-foreground">Add a time for each selected date:</p>
-                      {[...calendarDates].sort((a, b) => a.getTime() - b.getTime()).map((d) => {
-                        const key = toYMD(d)
-                        return (
-                          <div key={key} className="flex items-center gap-2">
-                            <span className="text-sm flex-1">{d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                            <Input
-                              type="time"
-                              value={dateTimes[key] || ''}
-                              onChange={(e) => setDateTimes(prev => ({ ...prev, [key]: e.target.value }))}
-                              className="bg-muted/30 border-border w-28"
-                            />
-                          </div>
-                        )
-                      })}
+                {eventMode === 'vote' ? (
+                  /* Date Options - Calendar */
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Proposed Dates — {cycleInfo.cycleStartDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })} to {cycleInfo.cycleEndDate.toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                    <div className="flex justify-center bg-muted/20 rounded-lg p-2">
+                      <Calendar
+                        mode="multiple"
+                        selected={calendarDates}
+                        onSelect={(dates) => {
+                          const next = dates || []
+                          // Always allow removing; only block growing past 5, and say so
+                          if (next.length <= 5 || next.length < calendarDates.length) {
+                            setCalendarDates(next)
+                            setDateLimitHint(false)
+                          } else {
+                            setDateLimitHint(true)
+                          }
+                        }}
+                        disabled={(date) => {
+                          const d = toYMD(date)
+                          // Never disable an already-picked date, or it can't be deselected
+                          if (calendarDates.some(cd => toYMD(cd) === d)) return false
+                          return d < toYMD(cycleInfo.cycleStartDate) || d > toYMD(cycleInfo.cycleEndDate)
+                        }}
+                        defaultMonth={cycleInfo.cycleStartDate}
+                      />
                     </div>
-                  )}
-                  {calendarDates.length === 0 && (
-                    <p className="text-xs text-muted-foreground/60 text-center">Tap dates on the calendar (up to 5)</p>
-                  )}
-                </div>
+                    {dateLimitHint && (
+                      <p className="text-xs text-amber-400 text-center">
+                        5 dates max — remove one before adding another.
+                      </p>
+                    )}
+                    {calendarDates.length > 0 && (
+                      <div className="space-y-2 mt-2">
+                        <p className="text-xs text-muted-foreground">Add a time for each selected date:</p>
+                        {[...calendarDates].sort((a, b) => a.getTime() - b.getTime()).map((d) => {
+                          const key = toYMD(d)
+                          return (
+                            <div key={key} className="flex items-center gap-2">
+                              <span className="text-sm flex-1">{d.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                              <Input
+                                type="time"
+                                value={dateTimes[key] || ''}
+                                onChange={(e) => setDateTimes(prev => ({ ...prev, [key]: e.target.value }))}
+                                className="bg-muted/30 border-border w-28"
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {calendarDates.length === 0 && (
+                      <p className="text-xs text-muted-foreground/60 text-center">Tap dates on the calendar (up to 5)</p>
+                    )}
+                  </div>
+                ) : (
+                  /* Date already locked in — no vote */
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground uppercase tracking-wider">Event Date</p>
+                    <div className="flex justify-center bg-muted/20 rounded-lg p-2">
+                      <Calendar
+                        mode="single"
+                        selected={confirmedDate}
+                        onSelect={(date) => setConfirmedDate(date)}
+                        defaultMonth={confirmedDate ?? cycleInfo.cycleStartDate}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm flex-1">
+                        {confirmedDate
+                          ? confirmedDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' })
+                          : <span className="text-muted-foreground/60">Pick a date above</span>}
+                      </span>
+                      <Input
+                        type="time"
+                        value={confirmedTime}
+                        onChange={(e) => setConfirmedTime(e.target.value)}
+                        className="bg-muted/30 border-border w-28"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground/60">
+                      Goes straight to the event history — no voting. Everyone is marked as attending; adjust it in the attendance grid after.
+                    </p>
+                  </div>
+                )}
 
                 <div className="flex gap-2 pt-2">
-                  <Button
-                    onClick={handleSubmitEvent}
-                    className="flex-1 bg-primary hover:bg-primary/90"
-                  >
-                    Create & Start Voting
-                  </Button>
+                  {eventMode === 'vote' ? (
+                    <Button
+                      onClick={handleSubmitEvent}
+                      className="flex-1 bg-primary hover:bg-primary/90"
+                    >
+                      Create & Start Voting
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleCreateConfirmedEvent}
+                      disabled={!eventTitle.trim() || !eventLocation.trim() || !confirmedDate || !confirmedTime}
+                      className="flex-1 bg-primary hover:bg-primary/90"
+                    >
+                      Create Confirmed Event
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
-                    onClick={() => { setShowEventForm(false); setCalendarDates([]); setDateTimes({}) }}
+                    onClick={() => {
+                      setShowEventForm(false)
+                      setCalendarDates([])
+                      setDateTimes({})
+                      setConfirmedDate(undefined)
+                      setConfirmedTime('')
+                      setDateLimitHint(false)
+                      setEventMode('vote')
+                    }}
                     className="border-border"
                   >
                     Cancel

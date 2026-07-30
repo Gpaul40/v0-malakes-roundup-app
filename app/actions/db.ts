@@ -88,6 +88,32 @@ export async function confirmEventAction(data: {
     .eq('id', data.proposalId)
 }
 
+export async function createConfirmedEventAction(data: {
+  organiserId: string
+  organiserName: string
+  title: string
+  location: string
+  date: string
+  time: string
+  attendees: string[]
+}) {
+  await requireSession()
+
+  // No vote needed — this event supersedes anything still open for voting
+  await supabaseServer.from('proposals').update({ status: 'cancelled' }).eq('status', 'voting')
+
+  await supabaseServer.from('events').insert({
+    id: String(Date.now()),
+    organiser_id: data.organiserId,
+    organiser_name: data.organiserName,
+    title: data.title,
+    date: data.date,
+    description: `Location: ${data.location} · ${data.time}`,
+    attendees: data.attendees,
+    rating: 0,
+  })
+}
+
 export async function payFineAction(fineId: string) {
   const session = await requireSession()
   if (session.username !== 'GABE') throw new Error('Admin only')
